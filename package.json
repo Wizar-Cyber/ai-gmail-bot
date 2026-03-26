@@ -7,7 +7,8 @@
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "auth": "tsx src/scripts/auth.ts"
+    "auth": "tsx src/scripts/auth.ts",
+    "test:pipeline": "tsx src/scripts/test-pipeline.ts"
   },
   "keywords": ["gmail", "ai", "bot", "typescript", "google-cloud", "pubsub"],
   "author": "",

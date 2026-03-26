@@ -34,7 +34,7 @@ export const env = {
 
   // ── Google AI (Gemini) ───────────────────────────────────────────────────
   GEMINI_API_KEY: optionalEnv('GEMINI_API_KEY'),
-  GEMINI_MODEL: optionalEnv('GEMINI_MODEL', 'gemini-1.5-pro'),
+  GEMINI_MODEL: optionalEnv('GEMINI_MODEL', 'gemini-2.5-flash'),
 
   // ── OpenAI ───────────────────────────────────────────────────────────────
   OPENAI_API_KEY: optionalEnv('OPENAI_API_KEY'),
@@ -47,6 +47,11 @@ export const env = {
   // ── Token Storage ────────────────────────────────────────────────────────
   // File path for dev. Replace with DB URI in production.
   TOKEN_STORE_PATH: optionalEnv('TOKEN_STORE_PATH', '.tokens.json'),
-} as const;
+  // ── Personalización del propietario ────────────────────────────────
+  // Nombre que aparece en el system prompt de la IA.
+  OWNER_NAME: optionalEnv('OWNER_NAME', 'el dueño de este correo'),
+  // Firma completa (texto plano, con saltos de línea \n).
+  // Ejemplo: "Reiber Lozano\nCEO @ MiEmpresa\n+34 600 000 000"
+  GMAIL_SIGNATURE: optionalEnv('GMAIL_SIGNATURE', ''),} as const;
 
 export type Env = typeof env;

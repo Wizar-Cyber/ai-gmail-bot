@@ -39,7 +39,7 @@ const ragService = new RAGService();
  *   5. For each new INBOX message → getContent → enrichContext → generateReply → createDraft
  */
 router.post(
-  '/webhook/gmail',
+  '/gmail',
   validatePubSubToken,
   async (req: Request, res: Response) => {
     // Step 1: ACK immediately — Pub/Sub retries on any non-2xx within the deadline

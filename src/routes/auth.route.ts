@@ -15,7 +15,7 @@ const router = Router();
  * - prompt: 'consent'       → forces Google to return refresh_token every time
  *                             (without this, Google only returns it on first authorization)
  */
-router.get('/auth/google', (_req: Request, res: Response) => {
+router.get('/google', (_req: Request, res: Response) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: [...GMAIL_SCOPES],
@@ -36,7 +36,7 @@ router.get('/auth/google', (_req: Request, res: Response) => {
  * SECURITY: This endpoint should be protected in production
  * (e.g. only accessible from localhost or behind a trusted proxy).
  */
-router.get('/auth/callback', async (req: Request, res: Response) => {
+router.get('/callback', async (req: Request, res: Response) => {
   const code = req.query.code as string | undefined;
 
   if (!code) {

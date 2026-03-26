@@ -22,24 +22,28 @@ export interface GenerateReplyInput {
 
 /**
  * Design decisions:
- * - "ONLY use information in the email" → prevents hallucination / liability
- * - "Request clarification if context is missing" → safe fallback behavior
- * - "Neutral/formal tone" → appropriate for B2B and transactional email
- * - "Same language as the email" → avoids awkward bilingual responses
- * - No external knowledge references → reduces hallucination surface
+ * - Primera persona → la respuesta suena como si la escribiera el dueño de la cuenta.
+ * - "ONLY use information in the email" → evita alucinaciones / responsabilidad legal.
+ * - "Request clarification if context is missing" → comportamiento seguro por defecto.
+ * - Tono cercano pero profesional → adecuado para comunicación directa entre personas.
+ * - "Same language as the email" → evita respuestas bilingües incómodas.
+ * - La firma se inyecta dinámicamente desde GMAIL_SIGNATURE en .env.
  */
-const SYSTEM_PROMPT = `You are a professional email assistant for a business.
-Your sole task is to draft a polished, concise reply to the email provided.
+function buildSystemPrompt(ownerName: string): string {
+  return `Eres el asistente personal de redacción de correos de ${ownerName}.
+Tu única tarea es redactar la respuesta al correo recibido EXACTAMENTE como si la escribiera ${ownerName} en primera persona.
 
-STRICT RULES:
-1. Use ONLY information explicitly present in the email subject, body, or the provided context block.
-2. Do NOT invent facts, figures, prices, deadlines, names, or anything not stated in the email.
-3. If the email asks a question you cannot answer from the available information, reply politely asking for clarification or additional details.
-4. Maintain a neutral, professional, and courteous tone at all times.
-5. Respond in the same language as the received email.
-6. Be concise — omit filler phrases like "I hope this email finds you well."
-7. Output the email body only. Do not include a subject line.
-8. End with: "Best regards,\n[Your Team]"`;
+REGLAS ESTRICTAS:
+1. Escribe en primera persona ("Te escribo para...", "Me alegra saber que...", "Estaré encantado de...").
+2. Usa ÚNICAMENTE la información presente en el asunto, el cuerpo del correo o el bloque de contexto proporcionado.
+3. NO inventes hechos, precios, fechas, nombres ni ningún dato que no esté en el correo.
+4. Si el correo hace una pregunta que no puedes responder con la información disponible, responde amablemente solicitando aclaración o más detalles.
+5. Mantén un tono cercano, directo y profesional — como lo haría una persona real, no un robot.
+6. Responde en el mismo idioma que el correo recibido.
+7. Sé conciso — evita frases de relleno como "Espero que estés bien" o "Un cordial saludo".
+8. Escribe SOLO el cuerpo del correo. NO incluyas línea de asunto.
+9. NO añadas ninguna firma ni despedida al final — la firma se añadirá automáticamente después.`;
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Temperature rationale
@@ -63,7 +67,7 @@ interface IAIProvider {
   generateReply(input: GenerateReplyInput): Promise<string>;
 }
 
-// ── Gemini 1.5 Pro ─────────────────────────────────────────────────────────
+// ── Gemini ─────────────────────────────────────────────────────────────────
 
 class GeminiProvider implements IAIProvider {
   private readonly client: GoogleGenerativeAI;
@@ -84,7 +88,7 @@ class GeminiProvider implements IAIProvider {
         temperature: TEMPERATURE,
         maxOutputTokens: 1024,
       },
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: buildSystemPrompt(env.OWNER_NAME),
     });
 
     const prompt = buildUserPrompt(input);
@@ -124,7 +128,7 @@ class OpenAIProvider implements IAIProvider {
           temperature: TEMPERATURE,
           max_tokens: 1024,
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: buildSystemPrompt(env.OWNER_NAME) },
             { role: 'user', content: buildUserPrompt(input) },
           ],
         }),
@@ -144,20 +148,32 @@ class OpenAIProvider implements IAIProvider {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function buildUserPrompt(input: GenerateReplyInput): string {
-  // RAG context injected here, before the email — visible to the model
   const contextBlock = input.context
-    ? `\n--- RELEVANT CONTEXT (use this to answer factual questions) ---\n${input.context}\n--- END CONTEXT ---\n`
+    ? `\n--- CONTEXTO RELEVANTE (úsalo para responder preguntas factuales) ---\n${input.context}\n--- FIN DEL CONTEXTO ---\n`
     : '';
 
   return `${contextBlock}
-Please draft a professional reply to the following email:
+Redacta la respuesta al siguiente correo:
 
-Subject: ${input.subject}
+Asunto: ${input.subject}
 
-Body:
+Cuerpo:
 ${input.body}
 
-Draft the reply body only.`;
+Escribe solo el cuerpo de la respuesta, sin firma.`;
+}
+
+/**
+ * Appends the owner's signature below the AI-generated body.
+ * The signature is stored in GMAIL_SIGNATURE with literal \n for line breaks
+ * (e.g. "Reiber Lozano\nlozanoreiber1@gmail.com") and expanded here.
+ * If no signature is configured the body is returned as-is.
+ */
+function appendSignature(body: string, signature: string): string {
+  if (!signature.trim()) return body;
+  // Expand literal \n sequences written in the .env value
+  const expanded = signature.replace(/\\n/g, '\n');
+  return `${body.trimEnd()}\n\n${expanded}`;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -193,8 +209,12 @@ export class AIService {
     logger.info('Generating AI reply', { subject: input.subject, hasContext: !!input.context });
     try {
       const reply = await this.provider.generateReply(input);
+      // Append signature after the AI-generated body.
+      // Doing it here (not in the prompt) prevents the model from modifying or
+      // duplicating the signature.
+      const signed = appendSignature(reply, env.GMAIL_SIGNATURE);
       logger.info('AI reply generated successfully');
-      return reply;
+      return signed;
     } catch (error) {
       if (error instanceof AIServiceError || error instanceof ConfigurationError) throw error;
       throw new AIServiceError('AI provider failed to generate a reply', error);
