@@ -1,0 +1,32 @@
+[
+  {
+    "id": "pricing",
+    "keywords": ["price", "pricing", "cost", "how much", "quote", "subscription", "plan", "tier", "billing"],
+    "answer": "Our pricing plans start at $49/month (Basic), $99/month (Professional), and custom pricing for Enterprise. Visit our website's pricing page for full details and a feature comparison."
+  },
+  {
+    "id": "support",
+    "keywords": ["support", "help", "issue", "problem", "bug", "error", "not working", "broken", "failing"],
+    "answer": "Our support team is available Monday–Friday, 9 am–6 pm UTC. Please include your account ID and a detailed description of the issue when replying, so we can investigate promptly."
+  },
+  {
+    "id": "refund",
+    "keywords": ["refund", "money back", "cancel", "cancellation", "return", "chargeback"],
+    "answer": "We offer a 30-day money-back guarantee for all plans. Cancellations can be processed through your account settings under Billing, or by contacting our support team directly."
+  },
+  {
+    "id": "integration",
+    "keywords": ["integrate", "integration", "api", "connect", "webhook", "sdk", "developer", "docs"],
+    "answer": "We provide REST APIs, webhooks, and official SDKs for JavaScript, Python, and Go. Full API documentation and integration guides are available at docs.yourcompany.com."
+  },
+  {
+    "id": "delivery",
+    "keywords": ["delivery", "shipping", "when", "arrive", "estimated", "tracking", "order", "dispatch"],
+    "answer": "Standard delivery takes 5–7 business days. Express delivery (2–3 business days) is available at checkout. Track your order using the link in your confirmation email."
+  },
+  {
+    "id": "account",
+    "keywords": ["account", "login", "password", "reset", "access", "sign in", "credentials"],
+    "answer": "To reset your password, visit the login page and click 'Forgot Password'. A reset link will be sent to your registered email address within a few minutes."
+  }
+]
