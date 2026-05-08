@@ -9,6 +9,36 @@ Pub/Sub Webhook → Gmail API → Parser → RAG Context → AI Service → Gmai
 
 ---
 
+## Módulo Python (Procesamiento de Kilometraje)
+
+Además del bot de Gmail en TypeScript, el proyecto incluye un módulo Python para procesar rapports de kilometraje desde PDFs de魁省 (Quebec) y actualizar archivos Excel.
+
+```bash
+# Ejecutar pipeline completo
+python src/main.py <rappor_kilometrage.pdf>
+
+# Pruebas
+pytest -v
+```
+
+### Arquitectura Python
+
+```
+src/
+├── pdf/extractor.py          # Extracción de texto desde PDFs
+├── excel/finder.py         # Búsqueda de hojas por vehículo
+├── excel/writer.py         # Escritura con сохрание de fórmulas
+├── normalization/
+│   ├── vehicles.py         # Normalización de nombres de vehículos
+│   ├── dates.py            # Normalización de fechas
+│   └── numbers.py          # Normalización de números (km)
+├── storage/database.py     # Persistencia SQLite
+├── pipeline.py            # Pipeline completo
+└── main.py                 # CLI
+```
+
+---
+
 ## Arquitectura
 
 ```
