@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 import re
+from datetime import timedelta
 
 
 class ExcelFindError(Exception):
@@ -37,7 +38,7 @@ class CellFinder:
         return mapping
 
     def find_date_row(self, target_date: date, date_col: int = 3) -> Optional[int]:
-        for row in range(self._data_start_row, 50):
+        for row in range(self._data_start_row, 200):
             cell_value = self.ws.cell(row, date_col).value
 
             if cell_value is None:
@@ -55,13 +56,15 @@ class CellFinder:
             elif isinstance(cell_value, str):
                 try:
                     num = int(cell_value)
-                    if num == target_date.day:
+                    target_day_of_year = (target_date - date(target_date.year, 1, 1)).days + 1
+                    if num == target_day_of_year:
                         return row
                 except (ValueError, TypeError):
                     pass
 
-        row_num = self._data_start_row + (target_date.day - 1)
-        if row_num < 50:
+        day_of_year = (target_date - date(target_date.year, 1, 1)).days + 1
+        row_num = self._data_start_row + (day_of_year - 1)
+        if row_num < 200:
             return row_num
 
         return None
@@ -78,23 +81,56 @@ class CellFinder:
 class SheetFinder:
     def __init__(self, workbook):
         self.wb = workbook
+        self._brand_models = {
+            "mercedes": ["e200", "e200cabri", "gle450", "gle", "c200", "gla", "glb", "glc", "gle", "gls", "s", "a", "b", "cla"],
+            "audi": ["q3", "q5", "q7", "q8", "a3", "a4", "a5", "a6", "a7", "tt"],
+            "bmw": ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "series"],
+            "toyota": ["corolla", "camry", "rav4", "highlander", "prado"],
+            "honda": ["civic", "accord", "crv", "pilot"],
+            "ford": ["fiesta", "focus", "fusion", "escape", "explorer"],
+            "chevrolet": ["cruze", "malibu", "equinox", "traverse"],
+            "nissan": ["sentra", "altima", "rogue", "pathfinder"],
+        }
+
+    def _extract_model_key(self, name: str) -> str:
+        name_lower = name.lower()
+        for brand, models in self._brand_models.items():
+            if brand in name_lower:
+                for model in models:
+                    if model in name_lower:
+                        return f"{brand}{model}"
+        return re.sub(r'[\s,\.\-]+', '', name_lower)
 
     def find_vehicle_sheet(self, vehicle_name: str, vehicle_plate: str = "") -> Optional[object]:
+        import difflib
+        
         normalize = lambda s: re.sub(r'[\s,\.]+', '', s.lower()) if s else ""
-
-        search_terms = [
-            normalize(vehicle_name),
-            normalize(vehicle_plate),
-            normalize(f"{vehicle_name} {vehicle_plate}"),
-        ]
-
+        
+        search_key = self._extract_model_key(vehicle_name)
+        
+        candidates = []
         for sheet_name in self.wb.sheetnames:
             sheet_norm = normalize(sheet_name)
-
-            for term in search_terms:
-                if term and term in sheet_norm:
+            search_norm = normalize(vehicle_name)
+            
+            if search_norm and search_norm in sheet_norm:
+                return self.wb[sheet_name]
+            
+            sheet_key = self._extract_model_key(sheet_name)
+            if search_key and sheet_key and search_key in sheet_key:
+                return self.wb[sheet_name]
+            
+            candidates.append((sheet_name, sheet_norm))
+        
+        for sheet_name, sheet_norm in candidates:
+            if normalize(vehicle_name) in sheet_norm:
+                return self.wb[sheet_name]
+        
+        if vehicle_plate:
+            for sheet_name in self.wb.sheetnames:
+                if vehicle_plate.lower() in sheet_name.lower():
                     return self.wb[sheet_name]
-
+        
         return None
 
     def find_month_sheet(self, month: int, year: int = 2026) -> Optional[object]:
