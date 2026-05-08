@@ -11,11 +11,29 @@ Pub/Sub Webhook → Gmail API → Parser → RAG Context → AI Service → Gmai
 
 ## Módulo Python (Procesamiento de Kilometraje)
 
-Además del bot de Gmail en TypeScript, el proyecto incluye un módulo Python para procesar rapports de kilometraje desde PDFs de魁省 (Quebec) y actualizar archivos Excel.
+Además del bot de Gmail en TypeScript, el proyecto incluye un módulo Python para procesar rapports de kilometraje desde PDFs de魁省 (Quebec) y escribir los datos en **Google Sheets** (destino principal) y/o archivos Excel locales.
+
+```
+PDF (Rapport kilométrique) → Pipeline Python → Google Sheets
+                                             → Excel local (opcional)
+```
+
+### Uso rápido
 
 ```bash
-# Ejecutar pipeline completo
-python src/main.py <rappor_kilometrage.pdf>
+# Instalar dependencias Python
+pip install -r requirements.txt
+
+# Procesar un PDF → escribe en Google Sheets automáticamente
+python -m src.main --pdf "Rapport kilométrique(20260423-20260423).pdf"
+
+# Especificar Sheet y cuenta de servicio explícitamente
+python -m src.main --pdf report.pdf \
+  --sheets-id 1wg28FRvAdsfw5AanFadKP6ZNQBTpWbAXzw8HXfNz9Rc \
+  --service-account service_account.json
+
+# Procesar emails de Gmail en vez de PDF local
+python -m src.main --max-emails 5
 
 # Pruebas
 pytest -v
@@ -25,17 +43,52 @@ pytest -v
 
 ```
 src/
-├── pdf/extractor.py          # Extracción de texto desde PDFs
-├── excel/finder.py         # Búsqueda de hojas por vehículo
-├── excel/writer.py         # Escritura con сохрание de fórmulas
+├── pdf/extractor.py          # Extracción de texto desde PDFs Quebec
+├── sheets/                   # Integración Google Sheets (destino principal)
+│   ├── auth.py               # Autenticación vía Service Account JSON
+│   ├── finder.py             # Fuzzy matching hoja por vehículo + búsqueda de fila por fecha
+│   └── writer.py             # Escritura en batch (batch_update), detección de duplicados
+├── excel/
+│   ├── finder.py             # Búsqueda de hojas/celdas en Excel local
+│   └── writer.py             # Escritura segura (no sobreescribe fórmulas)
 ├── normalization/
-│   ├── vehicles.py         # Normalización de nombres de vehículos
-│   ├── dates.py            # Normalización de fechas
-│   └── numbers.py          # Normalización de números (km)
-├── storage/database.py     # Persistencia SQLite
-├── pipeline.py            # Pipeline completo
-└── main.py                 # CLI
+│   ├── vehicles.py           # Normalización de nombres de vehículos (fuzzy)
+│   ├── dates.py              # Normalización de fechas (múltiples formatos)
+│   └── numbers.py            # Normalización de números km (formato europeo/americano)
+├── gmail/                    # Integración Gmail API
+├── storage/database.py       # Tracking SQLite (evita reprocesar emails)
+├── pipeline.py               # Orquestador: PDF → Sheets + Excel
+└── main.py                   # CLI
 ```
+
+### Variables de entorno (Python)
+
+```dotenv
+# Ruta al JSON de Service Account descargado desde Google Cloud Console
+GOOGLE_SERVICE_ACCOUNT_FILE=service_account.json
+
+# ID del Google Sheet (la cadena larga en la URL entre /d/ y /edit)
+GOOGLE_SHEETS_ID=1wg28FRvAdsfw5AanFadKP6ZNQBTpWbAXzw8HXfNz9Rc
+```
+
+### Configurar Google Sheets
+
+1. Crear una **Service Account** en [Google Cloud Console](https://console.cloud.google.com/iam-admin/serviceaccounts)
+2. Habilitar la **Google Sheets API** en el proyecto
+3. Descargar la clave JSON y guardarla como `service_account.json` en la raíz del proyecto
+4. **Compartir el Google Sheet** con el email de la service account (rol Editor)
+
+> `service_account.json` está en `.gitignore` — nunca se commitea.
+
+### Estructura esperada del Google Sheet
+
+El Sheet debe tener una pestaña por vehículo. Cada pestaña contiene los meses apilados verticalmente con esta estructura de columnas:
+
+| Col B | Col C | Col D | Col E | Col F | Col G |
+|---|---|---|---|---|---|
+| # | FECHA | KILOMETRAJE | EXCESO DE VELOCIDAD | TIEMPO DE ESTACIONAMIENTO | COMBUSTIBLE |
+
+El pipeline encuentra la fila correcta por coincidencia de fecha (`d/m/YYYY`) y escribe D, E, F, G en un solo `batch_update`.
 
 ---
 

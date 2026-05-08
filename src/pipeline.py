@@ -11,19 +11,33 @@ from .models.report import ProcessingResult
 class KilometerPipeline:
     def __init__(
         self,
-        excel_path: str,
+        excel_path: Optional[str] = None,
         data_dir: str = "data",
-        db_path: str = "data/processed.db"
+        db_path: str = "data/processed.db",
+        sheets_id: Optional[str] = None,
+        service_account_file: Optional[str] = None,
     ):
         self.excel_path = excel_path
         self.data_dir = data_dir
         self.db_path = db_path
+        self.sheets_id = sheets_id
+        self.service_account_file = service_account_file
 
         self.logger = setup_logging()
         self.database = Database(db_path)
 
         self.auth_manager = GmailAuthManager()
         self.gmail_service = Optional[GmailService]
+
+    def _build_sheets_updater(self):
+        """Returns a SheetsUpdater if Sheets credentials are configured, else None."""
+        if not self.sheets_id or not self.service_account_file:
+            return None
+        from .sheets.auth import SheetsAuthManager
+        from .sheets.writer import SheetsUpdater
+        auth = SheetsAuthManager(self.service_account_file)
+        spreadsheet = auth.open_spreadsheet(self.sheets_id)
+        return SheetsUpdater(spreadsheet)
 
     def run(self, max_emails: int = 10, query: Optional[str] = None) -> list[ProcessingResult]:
         self.logger.info("=" * 50)
@@ -92,7 +106,6 @@ class KilometerPipeline:
 
     def process_single_pdf(self, pdf_path: str) -> list:
         from .pdf.extractor import extract_reports_from_pdf
-        from .excel.writer import ExcelUpdater
 
         self.logger.info(f"Procesando PDF: {pdf_path}")
 
@@ -102,20 +115,40 @@ class KilometerPipeline:
             self.logger.warning("No se extrajeron reportes del PDF")
             return []
 
-        updater = ExcelUpdater(self.excel_path).load()
+        # --- Excel output ---
+        excel_updater = None
+        if self.excel_path:
+            try:
+                excel_updater = ExcelUpdater(self.excel_path).load()
+            except Exception as e:
+                self.logger.warning(f"No se pudo abrir Excel ({self.excel_path}): {e}")
+
+        # --- Google Sheets output ---
+        sheets_updater = None
+        try:
+            sheets_updater = self._build_sheets_updater()
+        except Exception as e:
+            self.logger.warning(f"No se pudo conectar a Google Sheets: {e}")
 
         for report in reports:
             for entry in report.entries:
-                success, msg = updater.find_and_write_entry(
-                    entry.vehicle.name,
-                    entry
-                )
-                if success:
-                    self.logger.info(f"Insertado: {entry.vehicle.name} - {entry.date}")
-                else:
-                    self.logger.warning(f"Skipped: {entry.vehicle.name} - {entry.date} ({msg})")
+                if excel_updater:
+                    success, msg = excel_updater.find_and_write_entry(
+                        entry.vehicle.name, entry
+                    )
+                    tag = "Excel OK" if success else f"Excel skip ({msg})"
+                    self.logger.info(f"{entry.vehicle.name} [{entry.date}] → {tag}")
 
-        updater.save()
-        self.logger.info(f"Procesados {len(reports)} reportes")
+                if sheets_updater:
+                    success, msg = sheets_updater.find_and_write_entry(
+                        entry.vehicle.name, entry
+                    )
+                    tag = "Sheets OK" if success else f"Sheets skip ({msg})"
+                    self.logger.info(f"{entry.vehicle.name} [{entry.date}] → {tag}")
+
+        if excel_updater:
+            excel_updater.save()
+
+        self.logger.info(f"Procesados {len(reports)} reportes del PDF")
 
         return reports

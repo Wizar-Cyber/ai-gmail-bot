@@ -10,9 +10,18 @@ dist/
 # OAuth tokens — contain sensitive refresh tokens
 .tokens.json
 
+# Google Service Account key — NEVER commit
+service_account.json
+*_service_account.json
+
 # Logs
 logs/
 *.log
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
