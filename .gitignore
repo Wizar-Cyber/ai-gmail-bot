@@ -10,9 +10,10 @@ dist/
 # OAuth tokens — contain sensitive refresh tokens
 .tokens.json
 
-# Google Service Account key — NEVER commit
+# Google credentials — NEVER commit
 service_account.json
 *_service_account.json
+credentials.json
 
 # Logs
 logs/
