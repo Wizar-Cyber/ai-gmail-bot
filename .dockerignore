@@ -1,0 +1,29 @@
+# Credentials — always mount as volumes, never bake into image
+.env
+.tokens.json
+service_account.json
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.pytest_cache/
+
+# Data & logs
+data/
+logs/
+*.xlsx
+*.pdf
+*.db
+
+# Git
+.git/
+
+# Misc
+nul
+*.bak
