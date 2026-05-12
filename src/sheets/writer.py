@@ -55,15 +55,20 @@ class SheetsUpdater:
 
         # Duplicate check: skip if km already written and matches within tolerance
         existing_km = ws.cell(row, cols["KILOMETRAJE"]).value
-        if existing_km:
+        if existing_km is not None:
             try:
-                if abs(float(existing_km) - entry.kilometers) < 0.1:
+                val = float(existing_km)
+                if val != 0 and abs(val - entry.kilometers) < 0.1:
                     return False, "Duplicado"
             except (ValueError, TypeError):
                 pass
 
-        # Batch-write all four data columns in one API call
+        # Batch-write date + data columns
         updates = [
+            {
+                "range": gspread.utils.rowcol_to_a1(row, cols["FECHA"]),
+                "values": [[entry.date.strftime("%d/%m/%Y")]],
+            },
             {
                 "range": gspread.utils.rowcol_to_a1(row, cols["KILOMETRAJE"]),
                 "values": [[entry.kilometers]],

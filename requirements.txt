@@ -10,3 +10,5 @@ pdfplumber==0.10.3
 python-dotenv==1.0.1
 
 SQLAlchemy==2.0.29
+psycopg2-binary==2.9.9
+pytest>=8.0.0

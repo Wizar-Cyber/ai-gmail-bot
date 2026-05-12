@@ -12,17 +12,23 @@ import { logger } from '../utils/logger';
 export interface ParsedMessage {
   messageId: string;
   threadId: string;
-  /** Value of the "Subject" header */
   subject: string;
-  /** Value of the "From" header — used as the "To" address in the draft reply */
   from: string;
-  /**
-   * Value of the "Message-ID" header (e.g. <abc123@mail.gmail.com>).
-   * Required for RFC 2822-compliant threading via In-Reply-To / References.
-   */
   messageIdHeader: string;
-  /** Decoded plain-text body (never raw base64) */
   body: string;
+}
+
+export interface AttachmentData {
+  filename: string;
+  data: Buffer;
+  mimeType: string;
+  size: number;
+}
+
+export interface WatchResult {
+  historyId: string;
+  emailAddress?: string;
+  expiration: number;
 }
 
 export class GmailService {
@@ -189,5 +195,158 @@ export class GmailService {
         error
       );
     }
+  }
+
+  // ── Watch Management ────────────────────────────────────────────────────
+
+  async setupWatch(topicName: string): Promise<WatchResult> {
+    try {
+      const response = await withRetry(() =>
+        this.gmail.users.watch({
+          userId: 'me',
+          requestBody: {
+            topicName,
+            labelIds: ['INBOX'],
+            labelFilterAction: 'include',
+          },
+        })
+      );
+
+      const watchData = response.data as any;
+      return {
+        historyId: watchData.historyId as string,
+        emailAddress: (watchData.emailAddress as string) ?? undefined,
+        expiration: parseInt(watchData.expiration as string, 10),
+      };
+    } catch (error) {
+      throw new GmailServiceError('Failed to set up Gmail watch', error);
+    }
+  }
+
+  async stopWatch(): Promise<void> {
+    try {
+      await withRetry(() =>
+        this.gmail.users.stop({
+          userId: 'me',
+        })
+      );
+    } catch (error) {
+      throw new GmailServiceError('Failed to stop Gmail watch', error);
+    }
+  }
+
+  // ── Attachment Download ─────────────────────────────────────────────────
+
+  async getPdfAttachmentFilenames(messageId: string): Promise<string[]> {
+    try {
+      const response = await withRetry(() =>
+        this.gmail.users.messages.get({
+          userId: 'me',
+          id: messageId,
+          format: 'full',
+        })
+      );
+      const filenames: string[] = [];
+      this._collectFilenames(response.data.payload, filenames);
+      return filenames.filter((f) => f.toLowerCase().endsWith('.pdf'));
+    } catch (error) {
+      throw new GmailServiceError(`Failed to get attachment list for message ${messageId}`, error);
+    }
+  }
+
+  async downloadAttachment(
+    messageId: string,
+    attachmentId: string,
+    filename: string,
+    mimeType: string
+  ): Promise<AttachmentData> {
+    const response = await withRetry(() =>
+      this.gmail.users.messages.attachments.get({
+        userId: 'me',
+        messageId,
+        id: attachmentId,
+      })
+    );
+
+    const rawData = response.data.data!;
+    const standard = rawData.replace(/-/g, '+').replace(/_/g, '/');
+    const data = Buffer.from(standard, 'base64');
+
+    return {
+      filename: filename || 'unnamed',
+      data,
+      mimeType: mimeType || 'application/octet-stream',
+      size: data.length,
+    };
+  }
+
+  async getPdfAttachments(messageId: string): Promise<AttachmentData[]> {
+    const attachments: AttachmentData[] = [];
+
+    try {
+      const response = await withRetry(() =>
+        this.gmail.users.messages.get({
+          userId: 'me',
+          id: messageId,
+          format: 'full',
+        })
+      );
+
+      const parts = this._collectAttachmentParts(response.data.payload);
+      for (const part of parts) {
+        const fn = (part.filename || '').toLowerCase();
+        if (!fn.endsWith('.pdf')) continue;
+
+        const partBody = part.body;
+        if (partBody?.attachmentId) {
+          const data = await this.downloadAttachment(
+            messageId,
+            partBody.attachmentId,
+            part.filename || 'unnamed',
+            part.mimeType || 'application/pdf'
+          );
+          attachments.push(data);
+        }
+      }
+    } catch (error) {
+      throw new GmailServiceError(`Failed to get PDF attachments for message ${messageId}`, error);
+    }
+
+    return attachments;
+  }
+
+  private _collectFilenames(
+    payload: gmail_v1.Schema$MessagePart | undefined | null,
+    result: string[]
+  ): void {
+    if (!payload) return;
+    if (payload.filename) {
+      result.push(payload.filename);
+    }
+    if (payload.parts) {
+      for (const part of payload.parts) {
+        this._collectFilenames(part, result);
+      }
+    }
+  }
+
+  private _collectAttachmentParts(
+    payload: gmail_v1.Schema$MessagePart | undefined | null
+  ): gmail_v1.Schema$MessagePart[] {
+    if (!payload) return [];
+
+    const result: gmail_v1.Schema$MessagePart[] = [];
+
+    if (payload.filename && payload.body?.attachmentId) {
+      result.push(payload);
+    }
+
+    if (payload.parts) {
+      for (const part of payload.parts) {
+        result.push(...this._collectAttachmentParts(part));
+      }
+    }
+
+    return result;
   }
 }

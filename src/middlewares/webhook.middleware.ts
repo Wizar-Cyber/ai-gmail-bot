@@ -31,9 +31,11 @@ export function validatePubSubToken(
 ): void {
   if (!env.PUBSUB_VERIFICATION_TOKEN) {
     if (env.NODE_ENV === 'production') {
-      logger.warn(
-        'PUBSUB_VERIFICATION_TOKEN is not set in production. The webhook endpoint is unprotected.'
+      logger.error(
+        'PUBSUB_VERIFICATION_TOKEN is required in production. Configure it in .env file.'
       );
+      res.status(200).send('OK');
+      return;
     }
     return next();
   }

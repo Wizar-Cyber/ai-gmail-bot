@@ -2,6 +2,8 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import webhookRouter from './routes/webhook.route';
 import authRouter from './routes/auth.route';
+import watchRouter from './routes/watch.route';
+import sheetsRouter from './routes/sheets.route';
 import { correlationStorage, logger } from './utils/logger';
 import { AppError } from './utils/errors';
 import { oauth2Client } from './config/oauth.config';
@@ -61,6 +63,8 @@ oauth2Client.on('tokens', async (tokens) => {
 
 app.use('/auth', authRouter);
 app.use('/webhook', webhookRouter);
+app.use('/api/watch', watchRouter);
+app.use('/api/sheets', sheetsRouter);
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -13,24 +13,26 @@ class KilometerPipeline:
         self,
         excel_path: Optional[str] = None,
         data_dir: str = "data",
-        db_path: str = "data/processed.db",
+        db_url: Optional[str] = None,
         sheets_id: Optional[str] = None,
+        sheets_ingresos_id: Optional[str] = None,
         service_account_file: Optional[str] = None,
+        enable_ingresos: bool = False,
     ):
         self.excel_path = excel_path
         self.data_dir = data_dir
-        self.db_path = db_path
         self.sheets_id = sheets_id
+        self.sheets_ingresos_id = sheets_ingresos_id
         self.service_account_file = service_account_file
+        self.enable_ingresos = enable_ingresos
 
         self.logger = setup_logging()
-        self.database = Database(db_path)
+        self.database = Database(db_url)
 
         self.auth_manager = GmailAuthManager()
-        self.gmail_service = Optional[GmailService]
+        self.gmail_service = None
 
     def _build_sheets_updater(self):
-        """Returns a SheetsUpdater if Sheets credentials are configured, else None."""
         if not self.sheets_id or not self.service_account_file:
             return None
         from .sheets.auth import SheetsAuthManager
@@ -38,6 +40,28 @@ class KilometerPipeline:
         auth = SheetsAuthManager(self.service_account_file)
         spreadsheet = auth.open_spreadsheet(self.sheets_id)
         return SheetsUpdater(spreadsheet)
+
+    def _build_ingresos_updater(self):
+        if not self.sheets_ingresos_id or not self.service_account_file:
+            return None
+        from .sheets.auth import SheetsAuthManager
+        from .sheets_ingresos.writer import IngresosSheetUpdater
+        auth = SheetsAuthManager(self.service_account_file)
+        spreadsheet = auth.open_spreadsheet(self.sheets_ingresos_id)
+        return IngresosSheetUpdater(spreadsheet)
+
+    def update_summary_formulas(self, year: int = 2026) -> int:
+        if not self.sheets_id or not self.service_account_file:
+            self.logger.warning("No sheets_id o service_account, no se puede actualizar resumen")
+            return 0
+        from .sheets.auth import SheetsAuthManager
+        from .sheets.summary import SummaryUpdater
+        auth = SheetsAuthManager(self.service_account_file)
+        spreadsheet = auth.open_spreadsheet(self.sheets_id)
+        updater = SummaryUpdater(spreadsheet)
+        count = updater.update_formulas(year=year)
+        self.logger.info(f"Resumen actualizado: {count} celdas con fórmulas")
+        return count
 
     def run(self, max_emails: int = 10, query: Optional[str] = None) -> list[ProcessingResult]:
         self.logger.info("=" * 50)
@@ -59,7 +83,7 @@ class KilometerPipeline:
             self.logger.info(f"Encontrados {len(emails)} emails")
 
             for email_msg in emails:
-                email_id = email_msg['id']
+                email_id = email_msg["id"]
 
                 if self.database.is_email_processed(email_id):
                     self.logger.info(f"Email {email_id} ya procesado, saltando")
@@ -76,7 +100,7 @@ class KilometerPipeline:
                 metadata = self.gmail_service.get_email_metadata(email_id)
                 self.database.save_email(
                     email_id=email_id,
-                    subject=metadata.get('subject', ''),
+                    subject=metadata.get("subject", ""),
                     result=result.to_dict()
                 )
 
@@ -123,12 +147,20 @@ class KilometerPipeline:
             except Exception as e:
                 self.logger.warning(f"No se pudo abrir Excel ({self.excel_path}): {e}")
 
-        # --- Google Sheets output ---
+        # --- Sheets (kilometraje) output ---
         sheets_updater = None
         try:
             sheets_updater = self._build_sheets_updater()
         except Exception as e:
-            self.logger.warning(f"No se pudo conectar a Google Sheets: {e}")
+            self.logger.warning(f"No se pudo conectar a Google Sheets kilometraje: {e}")
+
+        # --- Sheets (ingresos/gastos) output ---
+        ingresos_updater = None
+        if self.enable_ingresos:
+            try:
+                ingresos_updater = self._build_ingresos_updater()
+            except Exception as e:
+                self.logger.warning(f"No se pudo conectar a Google Sheets ingresos: {e}")
 
         for report in reports:
             for entry in report.entries:
@@ -145,6 +177,21 @@ class KilometerPipeline:
                     )
                     tag = "Sheets OK" if success else f"Sheets skip ({msg})"
                     self.logger.info(f"{entry.vehicle.name} [{entry.date}] → {tag}")
+
+                if ingresos_updater:
+                    success, msg = ingresos_updater.find_and_write_note(
+                        entry.vehicle.name, entry, entry.vehicle.plate
+                    )
+                    tag = "Ingresos OK" if success else f"Ingresos skip ({msg})"
+                    self.logger.info(f"{entry.vehicle.name} [{entry.date}] → {tag}")
+
+                self.database.save_income_entry(
+                    vehicle_name=entry.vehicle.name,
+                    entry_date=entry.date,
+                    kilometers=entry.kilometers,
+                    notes=f"KILOMETRAJE INFORME {entry.kilometers}",
+                    source_file=report.source_file,
+                )
 
         if excel_updater:
             excel_updater.save()

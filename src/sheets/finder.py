@@ -1,23 +1,16 @@
 import re
 from datetime import date, datetime
 from typing import Optional
-
 import gspread
 
 
-class SheetsFinder:
-    """Locates the right gspread Worksheet for a vehicle, mirroring ExcelSheetFinder logic."""
+from ..normalization.dates import DATE_FORMATS as _DATE_FORMATS, MONTH_DAY_FORMATS as _MONTH_DAY_FORMATS
 
-    _BRAND_MODELS = {
-        "mercedes": ["e200cabri", "e200", "gle450", "gle", "c200", "gla", "glb", "glc", "gls", "cla"],
-        "audi": ["q3", "q5", "q7", "q8", "a3", "a4", "a5", "a6", "a7", "tt"],
-        "bmw": ["x1", "x2", "x3", "x4", "x5", "x6", "x7"],
-        "toyota": ["corolla", "camry", "rav4", "highlander", "prado"],
-        "honda": ["civic", "accord", "crv", "pilot"],
-        "ford": ["fiesta", "focus", "fusion", "escape", "explorer"],
-        "chevrolet": ["cruze", "malibu", "equinox", "traverse"],
-        "nissan": ["sentra", "altima", "rogue", "pathfinder"],
-    }
+
+class BaseSheetFinder:
+    """Base fuzzy sheet matcher. Subclasses override _BRAND_MODELS."""
+
+    _BRAND_MODELS = {}
 
     def __init__(self, spreadsheet: gspread.Spreadsheet):
         self.spreadsheet = spreadsheet
@@ -38,7 +31,6 @@ class SheetsFinder:
     def find_vehicle_sheet(self, vehicle_name: str, vehicle_plate: str = "") -> Optional[gspread.Worksheet]:
         search_norm = self._normalize(vehicle_name)
         search_key = self._extract_model_key(vehicle_name)
-
         worksheets = self.spreadsheet.worksheets()
 
         for ws in worksheets:
@@ -49,20 +41,29 @@ class SheetsFinder:
             if search_key and sheet_key and search_key in sheet_key:
                 return ws
 
-        # Second pass: plate matching
         if vehicle_plate:
             plate_norm = vehicle_plate.lower().strip()
             for ws in worksheets:
                 if plate_norm in ws.title.lower():
                     return ws
-
         return None
 
 
-class RowFinder:
-    """Finds the 1-indexed row number for a given date inside a gspread Worksheet."""
+class SheetsFinder(BaseSheetFinder):
+    _BRAND_MODELS = {
+        "mercedes": ["e200cabri", "e200", "gle450", "gle", "c200", "gla", "glb", "glc", "gls", "cla"],
+        "audi": ["q3", "q5", "q7", "q8", "a3", "a4", "a5", "a6", "a7", "tt"],
+        "bmw": ["x1", "x2", "x3", "x4", "x5", "x6", "x7"],
+        "toyota": ["corolla", "camry", "rav4", "highlander", "prado"],
+        "honda": ["civic", "accord", "crv", "pilot"],
+        "ford": ["fiesta", "focus", "fusion", "escape", "explorer"],
+        "chevrolet": ["cruze", "malibu", "equinox", "traverse"],
+        "nissan": ["sentra", "altima", "rogue", "pathfinder"],
+    }
 
-    DATA_START_ROW = 13
+
+class RowFinder:
+    """Finds the correct row for a date, respecting month sections with TOTAL separators."""
 
     def __init__(self, worksheet: gspread.Worksheet):
         self.ws = worksheet
@@ -73,44 +74,103 @@ class RowFinder:
             self._cache = self.ws.get_all_values()
         return self._cache
 
-    def find_date_row(self, target_date: date, date_col: int = 3) -> Optional[int]:
-        """Returns 1-indexed row or None. Falls back to positional offset like the Excel version."""
-        target_day = (target_date - date(target_date.year, 1, 1)).days + 1
-        col_idx = date_col - 1  # 0-indexed for list access
+    def _try_parse_date(self, cell_val: str) -> Optional[date]:
+        for fmt in _DATE_FORMATS:
+            try:
+                return datetime.strptime(cell_val, fmt).date()
+            except ValueError:
+                continue
+        return None
 
-        for row_idx, row in enumerate(self._values()[self.DATA_START_ROW - 1:], start=self.DATA_START_ROW):
+    def _is_separator(self, cell_val: str) -> bool:
+        return cell_val.upper() in ("TOTAL", "FECHA", "MES", "SUBTOTAL", "TOTALES")
+
+    def find_date_row(self, target_date: date, date_col: int = 3) -> Optional[int]:
+        col_idx = date_col - 1
+        values = self._values()
+
+        exact_match = None
+        date_rows: list[tuple[date, int]] = []
+
+        for row_idx, row in enumerate(values):
             if col_idx >= len(row):
                 continue
             cell_val = row[col_idx].strip() if row[col_idx] else ""
             if not cell_val:
                 continue
 
-            # Numeric day-of-year
-            try:
-                if int(cell_val) == target_day:
-                    return row_idx
-            except ValueError:
-                pass
+            if self._is_separator(cell_val):
+                continue
 
-            # Date string
-            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-                try:
-                    if datetime.strptime(cell_val, fmt).date() == target_date:
-                        return row_idx
-                except ValueError:
-                    continue
+            parsed = self._try_parse_date(cell_val)
+            if parsed:
+                if parsed == target_date:
+                    exact_match = row_idx + 1
+                date_rows.append((parsed, row_idx + 1))
 
-        # Positional fallback: row 13 = day 1, row 14 = day 2, …
-        row_num = self.DATA_START_ROW + (target_day - 1)
-        return row_num if row_num <= 400 else None
+        if exact_match:
+            return exact_match
+
+        if not date_rows:
+            return None
+
+        date_rows.sort(key=lambda x: x[0])
+
+        for d, row_num in date_rows:
+            if d > target_date:
+                body = {
+                    "requests": [{
+                        "insertDimension": {
+                            "range": {
+                                "sheetId": self.ws.id,
+                                "dimension": "ROWS",
+                                "startIndex": row_num - 1,
+                                "endIndex": row_num,
+                            }
+                        }
+                    }]
+                }
+                self.ws.spreadsheet.batch_update(body)
+                return row_num
+
+        return date_rows[-1][1] + 1
+
+
+def _find_header_row(worksheet: gspread.Worksheet, headers: list[str]) -> int:
+    """Scan worksheet rows 1-30 to find the data header row.
+
+    Prefers rows containing both FECHA and KILOMETRAJE together.
+    Falls back to the first row matching any single header.
+    """
+    values = worksheet.get_all_values()
+    header_lower = [h.lower() for h in headers]
+    best_row = 3
+
+    for row_idx, row in enumerate(values[:30]):
+        row_cells = [c.lower().strip() for c in row if c]
+        matched = [h for h in header_lower if any(h in c for c in row_cells)]
+
+        if 'fecha' in matched and 'kilometraje' in matched:
+            return row_idx + 1
+
+        if matched:
+            best_row = row_idx + 1
+
+    return best_row
 
 
 def find_column_by_header(
     worksheet: gspread.Worksheet,
     headers: list[str],
-    search_row: int = 3,
+    search_row: Optional[int] = None,
 ) -> dict[str, int]:
-    """Returns a dict of header → 1-indexed column number."""
+    """Returns a dict of header → 1-indexed column number.
+
+    Auto-detects the header row if search_row is not provided.
+    """
+    if search_row is None:
+        search_row = _find_header_row(worksheet, headers)
+
     row_values = worksheet.row_values(search_row)
     mapping: dict[str, int] = {}
     for col_idx, cell in enumerate(row_values, start=1):

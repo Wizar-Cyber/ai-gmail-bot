@@ -47,11 +47,29 @@ export const env = {
   // ── Token Storage ────────────────────────────────────────────────────────
   // File path for dev. Replace with DB URI in production.
   TOKEN_STORE_PATH: optionalEnv('TOKEN_STORE_PATH', '.tokens.json'),
+
+  // ── Watch State ───────────────────────────────────────────────────────────
+  WATCH_STATE_PATH: optionalEnv('WATCH_STATE_PATH', 'data/watch-state.json'),
+
+  // ── Pub/Sub ───────────────────────────────────────────────────────────────
+  // Gmail push notifications topic (e.g. projects/my-project/topics/gmail)
+  GOOGLE_PUBSUB_TOPIC: optionalEnv('GOOGLE_PUBSUB_TOPIC'),
+
+  // ── Pipeline Bridge ───────────────────────────────────────────────────────
+  PDF_DOWNLOAD_DIR: optionalEnv('PDF_DOWNLOAD_DIR', 'data/pdfs'),
+  PIPELINE_CMD: optionalEnv('PIPELINE_CMD', 'python3 -m src.main'),
+  DATA_DIR: optionalEnv('DATA_DIR', 'data'),
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  // Interval in ms between inbox checks (default 30000 = 30s)
+  POLL_INTERVAL: optionalEnv('POLL_INTERVAL', '30000'),
+
   // ── Personalización del propietario ────────────────────────────────
   // Nombre que aparece en el system prompt de la IA.
   OWNER_NAME: optionalEnv('OWNER_NAME', 'el dueño de este correo'),
   // Firma completa (texto plano, con saltos de línea \n).
   // Ejemplo: "Reiber Lozano\nCEO @ MiEmpresa\n+34 600 000 000"
-  GMAIL_SIGNATURE: optionalEnv('GMAIL_SIGNATURE', ''),} as const;
+  GMAIL_SIGNATURE: optionalEnv('GMAIL_SIGNATURE', ''),
+} as const;
 
 export type Env = typeof env;

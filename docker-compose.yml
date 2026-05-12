@@ -1,7 +1,49 @@
 services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./service_account.json:/app/service_account.json:ro
+      - ./credentials.json:/app/credentials.json:ro
+      - ./.tokens.json:/app/.tokens.json
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vehicle_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-vehicle_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vehicle_bot} -d ${POSTGRES_DB:-vehicle_bot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   pipeline:
     build: .
+    profiles:
+      - manual
+    depends_on:
+      db:
+        condition: service_healthy
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vehicle_bot}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-vehicle_bot}
     volumes:
       - ./service_account.json:/app/service_account.json:ro
       - ./credentials.json:/app/credentials.json:ro
@@ -9,3 +51,6 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: "no"
+
+volumes:
+  pgdata:

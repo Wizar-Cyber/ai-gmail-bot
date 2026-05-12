@@ -51,3 +51,17 @@ export class ConfigurationError extends AppError {
     super(message, 'CONFIGURATION_ERROR', 500);
   }
 }
+
+/** Error executing the external Python pipeline */
+export class PipelineBridgeError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'PIPELINE_BRIDGE_ERROR', 502, details);
+  }
+}
+
+/** Error managing Gmail watch */
+export class WatchError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'WATCH_ERROR', 502, details);
+  }
+}

@@ -33,7 +33,7 @@ class TestIntegration:
     def test_database_operations(self):
         """Testea operaciones de base de datos."""
         from src.storage.database import Database
-        db = Database("data/test.db")
+        db = Database("sqlite:///data/test.db")
 
         result = db.save_entry(
             vehicle_name="MERCEDES E200",

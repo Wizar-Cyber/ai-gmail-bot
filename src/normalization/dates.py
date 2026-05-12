@@ -17,6 +17,8 @@ DATE_FORMATS = [
     "%d %m %Y",
 ]
 
+MONTH_DAY_FORMATS = ("%d/%m", "%m/%d", "%d-%m")
+
 MONTH_NAMES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
     "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,

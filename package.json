@@ -4,7 +4,7 @@
   "description": "AI-powered Gmail automation using Google APIs and LLMs (Gemini / GPT-4o)",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/rag/faq.json dist/rag/faq.json",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "auth": "tsx src/scripts/auth.ts",

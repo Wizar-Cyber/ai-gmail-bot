@@ -30,7 +30,14 @@ def main():
         "--sheets-id",
         type=str,
         default=os.getenv("GOOGLE_SHEETS_ID"),
-        help="ID del Google Sheet destino (o variable GOOGLE_SHEETS_ID)"
+        help="ID del Google Sheet de kilometraje (o variable GOOGLE_SHEETS_ID)"
+    )
+
+    parser.add_argument(
+        "--sheets-ingresos-id",
+        type=str,
+        default=os.getenv("GOOGLE_SHEETS_INGRESOS_ID"),
+        help="ID del Google Sheet de ingresos/gastos (o variable GOOGLE_SHEETS_INGRESOS_ID)"
     )
 
     parser.add_argument(
@@ -68,13 +75,37 @@ def main():
         help="Directorio para datos descargados"
     )
 
+    parser.add_argument(
+        "--db-url",
+        type=str,
+        default=os.getenv("DATABASE_URL"),
+        help="URL de conexión a base de datos (por defecto SQLite local)"
+    )
+
+    parser.add_argument(
+        "--update-summary",
+        action="store_true",
+        help="Actualizar fórmulas en hoja Total y Resumen"
+    )
+
+    parser.add_argument(
+        "--summary-year",
+        type=int,
+        default=2026,
+        help="Año para fórmulas del resumen (default: 2026)"
+    )
+
+    parser.add_argument(
+        "--enable-ingresos",
+        action="store_true",
+        help="Habilitar escritura en hoja de ingresos/gastos"
+    )
+
     args = parser.parse_args()
 
-    # Default excel path when not given explicitly
     default_excel = "KILOMETRAJE Y DEPRECIACION VEHICULOS 2026 (1).xlsx"
     excel_path = args.excel
 
-    # If no explicit --excel but the default file exists, use it automatically
     if not excel_path and os.path.exists(default_excel):
         excel_path = default_excel
 
@@ -89,15 +120,25 @@ def main():
     pipeline = KilometerPipeline(
         excel_path=excel_path,
         data_dir=args.data_dir,
+        db_url=args.db_url,
         sheets_id=args.sheets_id,
+        sheets_ingresos_id=args.sheets_ingresos_id,
         service_account_file=args.service_account,
+        enable_ingresos=args.enable_ingresos,
     )
+
+    if args.update_summary:
+        count = pipeline.update_summary_formulas(year=args.summary_year)
+        print(f"\n✓ Resumen actualizado: {count} fórmulas escritas")
+        return
 
     if args.pdf:
         reports = pipeline.process_single_pdf(args.pdf)
+        pipeline.update_summary_formulas(year=args.summary_year)
         print(f"\n✓ Procesados {len(reports)} reportes del PDF")
         for r in reports:
             print(f"  - {r.vehicle.name}: {len(r.entries)} entradas")
+        print(f"  - Resumen actualizado con fórmulas")
     else:
         results = pipeline.run(
             max_emails=args.max_emails,

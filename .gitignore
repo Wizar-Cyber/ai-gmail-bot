@@ -26,3 +26,11 @@ logs/
 __pycache__/
 *.pyc
 *.pyo
+
+# Runtime data
+data/
+!data/.gitkeep
+
+# Watch state
+watch-state.json
+*.watch-state.json
