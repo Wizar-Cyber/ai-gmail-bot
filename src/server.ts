@@ -23,6 +23,7 @@ server.listen(env.PORT, () => {
   startPolling();
 });
 
+/** Gracefully close the HTTP server and exit the process. */
 function shutdown(signal: string): void {
   logger.info(`${signal} received — shutting down gracefully`);
   server.close(() => {

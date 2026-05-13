@@ -3,6 +3,7 @@ import path from 'path';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
+/** Persisted state for the Gmail Pub/Sub watch session. */
 export interface WatchState {
   historyId?: string;
   emailAddress?: string;
@@ -11,6 +12,7 @@ export interface WatchState {
   topicName?: string;
 }
 
+/** File-based repository for reading and persisting the Gmail watch state. */
 export class WatchStateRepository {
   private readonly filePath: string;
 
@@ -18,6 +20,10 @@ export class WatchStateRepository {
     this.filePath = path.resolve(filePath);
   }
 
+  /**
+   * Persists the watch state to disk as JSON.
+   * @param state - The watch state to save
+   */
   async save(state: WatchState): Promise<void> {
     const dir = path.dirname(this.filePath);
     await fs.mkdir(dir, { recursive: true });
@@ -25,6 +31,10 @@ export class WatchStateRepository {
     logger.info('Watch state persisted', { path: this.filePath });
   }
 
+  /**
+   * Reads the watch state from disk.
+   * @returns The persisted state, or null if the file does not exist
+   */
   async load(): Promise<WatchState | null> {
     try {
       const raw = await fs.readFile(this.filePath, 'utf-8');
@@ -34,6 +44,9 @@ export class WatchStateRepository {
     }
   }
 
+  /**
+   * Deletes the persisted watch state file from disk.
+   */
   async clear(): Promise<void> {
     try {
       await fs.unlink(this.filePath);

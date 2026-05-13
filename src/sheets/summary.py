@@ -54,10 +54,22 @@ def _find_vehicle_sheet(spreadsheet: gspread.Spreadsheet, vehicle_title_in_repor
 
 
 class SummaryUpdater:
+    """Updates summary formulas in the spreadsheet's resumen/total sheet."""
+
     def __init__(self, spreadsheet: gspread.Spreadsheet):
+        """Initialize with a Google Spreadsheet.
+
+        Args:
+            spreadsheet: A gspread Spreadsheet instance.
+        """
         self.spreadsheet = spreadsheet
 
     def _find_summary_sheet(self) -> Optional[gspread.Worksheet]:
+        """Find the summary/total worksheet in the spreadsheet.
+
+        Returns:
+            The summary worksheet, or None if not found.
+        """
         for ws in self.spreadsheet.worksheets():
             norm = _normalize(ws.title)
             if any(kw in norm for kw in _SUMMARY_KEYWORDS):
@@ -65,6 +77,17 @@ class SummaryUpdater:
         return None
 
     def update_formulas(self, year: int = 2026) -> int:
+        """Update monthly summary formulas for each vehicle in the summary sheet.
+
+        Scans the summary sheet for vehicle report rows and writes
+        FILTER/SUMIF formulas for each month.
+
+        Args:
+            year: The year for formula calculations.
+
+        Returns:
+            Number of formula cells updated.
+        """
         summary = self._find_summary_sheet()
         if not summary:
             return 0

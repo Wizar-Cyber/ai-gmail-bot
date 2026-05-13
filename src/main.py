@@ -1,3 +1,5 @@
+"""Command-line entry point for the AI Gmail Bot kilometrage processing system."""
+
 import argparse
 import sys
 import os
@@ -15,6 +17,7 @@ from src.pipeline import KilometerPipeline
 
 
 def main():
+    """Parse CLI arguments and execute the appropriate pipeline flow."""
     parser = argparse.ArgumentParser(
         description="Sistema de automatización de reportes kilométricos"
     )

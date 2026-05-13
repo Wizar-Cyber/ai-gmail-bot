@@ -8,7 +8,7 @@ from .finder import IngresosSheetFinder
 
 
 class IngresosWriteError(Exception):
-    pass
+    """Raised when writing to the ingresos sheet fails."""
 
 
 _DATA_START_ROW = 9
@@ -25,9 +25,23 @@ class IngresosSheetUpdater:
     """
 
     def __init__(self, spreadsheet: gspread.Spreadsheet):
+        """Initialize with a Google Spreadsheet.
+
+        Args:
+            spreadsheet: A gspread Spreadsheet instance.
+        """
         self.spreadsheet = spreadsheet
 
     def _find_date_row(self, ws: gspread.Worksheet, target_date: date) -> Optional[int]:
+        """Find the row number for a target date in a worksheet.
+
+        Args:
+            ws: A gspread Worksheet instance.
+            target_date: The date to locate.
+
+        Returns:
+            The 1-indexed row number.
+        """
         values = ws.get_all_values()
         for row_idx in range(_DATA_START_ROW - 1, len(values)):
             row_num = row_idx + 1
@@ -55,6 +69,16 @@ class IngresosSheetUpdater:
         entry: DailyEntry,
         vehicle_plate: str = "",
     ) -> tuple[bool, str]:
+        """Find the correct sheet and write a kilometrage note for a vehicle entry.
+
+        Args:
+            vehicle_name: Name of the vehicle.
+            entry: A DailyEntry instance with kilometrage data.
+            vehicle_plate: Optional vehicle plate for sheet matching.
+
+        Returns:
+            Tuple of (success, message).
+        """
         finder = IngresosSheetFinder(self.spreadsheet)
         ws = finder.find_vehicle_sheet(vehicle_name, vehicle_plate)
 

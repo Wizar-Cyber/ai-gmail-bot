@@ -8,7 +8,7 @@ from .finder import SheetsFinder, RowFinder, find_column_by_header
 
 
 class SheetsWriteError(Exception):
-    pass
+    """Raised when writing to a Google Sheet fails."""
 
 
 _HEADER_KEYS = ["FECHA", "KILOMETRAJE", "EXCESO", "ESTACIONAMIENTO", "COMBUSTIBLE"]
@@ -30,6 +30,11 @@ class SheetsUpdater:
     """
 
     def __init__(self, spreadsheet: gspread.Spreadsheet):
+        """Initialize with a Google Spreadsheet.
+
+        Args:
+            spreadsheet: A gspread Spreadsheet instance.
+        """
         self.spreadsheet = spreadsheet
 
     def find_and_write_entry(
@@ -37,6 +42,15 @@ class SheetsUpdater:
         vehicle_name: str,
         entry: DailyEntry,
     ) -> tuple[bool, str]:
+        """Find the correct sheet and row for a vehicle entry and write data.
+
+        Args:
+            vehicle_name: Name of the vehicle (used for sheet lookup).
+            entry: A DailyEntry instance with kilometrage data.
+
+        Returns:
+            Tuple of (success, message).
+        """
         finder = SheetsFinder(self.spreadsheet)
         ws = finder.find_vehicle_sheet(entry.vehicle.name, entry.vehicle.plate)
 

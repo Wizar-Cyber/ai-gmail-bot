@@ -6,6 +6,7 @@ import { spawnAndWait } from '../utils/exec';
 
 const router = Router();
 
+/** Trigger the Python pipeline to recalculate summary sheet formulas for a given year. */
 router.post('/refresh-summary', async (_req: Request, res: Response) => {
   try {
     const cmd = env.PIPELINE_CMD.split(/\s+/);

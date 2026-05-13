@@ -9,12 +9,20 @@ import { TokenError, ConfigurationError } from '../utils/errors';
 
 const router = Router();
 
+/**
+ * Creates a GmailService with no credentials set.
+ * Used as a placeholder — callers must ensure tokens are available at runtime.
+ */
 function getAuthenticatedGmailService(): GmailService | null {
   oauth2Client.setCredentials(null as any);
   // Will fail at runtime if no tokens — handled by each route
   return new GmailService(oauth2Client);
 }
 
+/**
+ * Loads OAuth tokens from the repository and returns an authenticated GmailService.
+ * @throws TokenError if no refresh token is available
+ */
 async function ensureAuthenticated(): Promise<GmailService> {
   const tokens = await tokenRepository.load();
   if (!tokens?.refresh_token) {
@@ -30,6 +38,7 @@ async function ensureAuthenticated(): Promise<GmailService> {
 // POST /api/watch/start
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** Start a new Gmail watch subscription for the configured Pub/Sub topic. */
 router.post('/start', async (_req: Request, res: Response) => {
   try {
     const topicName = env.GOOGLE_PUBSUB_TOPIC;
@@ -90,6 +99,7 @@ router.post('/start', async (_req: Request, res: Response) => {
 // POST /api/watch/renew
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** Renew an existing Gmail watch (watches expire every 7 days). */
 router.post('/renew', async (_req: Request, res: Response) => {
   try {
     const state = await watchStateRepository.load();
@@ -135,6 +145,7 @@ router.post('/renew', async (_req: Request, res: Response) => {
 // GET /api/watch/status
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** Return the current watch state (active status, expiration, history ID). */
 router.get('/status', async (_req: Request, res: Response) => {
   try {
     const state = await watchStateRepository.load();
@@ -170,6 +181,7 @@ router.get('/status', async (_req: Request, res: Response) => {
 // DELETE /api/watch/stop
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** Stop the active Gmail watch and clear the persisted watch state. */
 router.delete('/stop', async (_req: Request, res: Response) => {
   try {
     const gmail = await ensureAuthenticated();

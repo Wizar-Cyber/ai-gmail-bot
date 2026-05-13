@@ -1,12 +1,20 @@
 import { spawn } from 'child_process';
 import path from 'path';
 
+/** Result of executing a child process. */
 export interface SpawnResult {
   exitCode: number | null;
   stdout: string;
   stderr: string;
 }
 
+/**
+ * Spawns a child process and waits for it to exit, collecting stdout and stderr.
+ * @param command - The executable to run
+ * @param args - Command-line arguments
+ * @param cwd - Working directory for the child process (defaults to project root)
+ * @returns A promise that resolves with the exit code and captured output
+ */
 export function spawnAndWait(
   command: string,
   args: string[],

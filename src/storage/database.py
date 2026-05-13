@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
+    """Persistent storage layer for processed emails, daily entries, and income records."""
+
     def __init__(self, db_url: Optional[str] = None):
+        """Initialize the database connection and create tables.
+
+        Args:
+            db_url: Database connection URL. Defaults to a local SQLite file.
+        """
         self.db_url = db_url or os.getenv(
             "DATABASE_URL",
             f"sqlite:///{os.getenv('DB_PATH', 'data/processed.db')}",
@@ -22,6 +29,7 @@ class Database:
         self._init_db()
 
     def _init_db(self):
+        """Create all database tables if they don't exist."""
         Base.metadata.create_all(self._engine)
 
     @contextmanager
@@ -39,6 +47,16 @@ class Database:
     # ── Emails ──────────────────────────────────────────────────────────
 
     def save_email(self, email_id: str, subject: str, result: dict) -> bool:
+        """Save a processed email record.
+
+        Args:
+            email_id: Gmail message ID.
+            subject: Email subject line.
+            result: Processing result dictionary.
+
+        Returns:
+            True if saved successfully, False otherwise.
+        """
         try:
             with self._session() as session:
                 existing = session.query(DbProcessedEmail).filter_by(email_id=email_id).first()
@@ -61,6 +79,14 @@ class Database:
             return False
 
     def is_email_processed(self, email_id: str) -> bool:
+        """Check if an email has already been processed.
+
+        Args:
+            email_id: Gmail message ID.
+
+        Returns:
+            True if the email was already processed, False otherwise.
+        """
         try:
             with self._session() as session:
                 return session.query(DbProcessedEmail).filter_by(email_id=email_id).first() is not None
@@ -82,6 +108,22 @@ class Database:
         source_file: str,
         email_id: str,
     ) -> bool:
+        """Save a daily kilometrage entry.
+
+        Args:
+            vehicle_name: Name of the vehicle.
+            vehicle_plate: Vehicle license plate.
+            entry_date: Date of the entry (ISO format string).
+            kilometers: Kilometers driven.
+            speed_excess: Speed excess minutes.
+            parking_time: Parking minutes.
+            fuel: Fuel liters.
+            source_file: Source file name.
+            email_id: Gmail message ID.
+
+        Returns:
+            True if saved successfully, False otherwise.
+        """
         try:
             with self._session() as session:
                 entry = DbDailyEntry(
@@ -102,6 +144,15 @@ class Database:
             return False
 
     def get_entries_by_date(self, start_date: str, end_date: str) -> list:
+        """Retrieve entries within a date range.
+
+        Args:
+            start_date: Start date string (ISO format).
+            end_date: End date string (ISO format).
+
+        Returns:
+            List of DbDailyEntry objects.
+        """
         try:
             with self._session() as session:
                 rows = (
@@ -116,6 +167,14 @@ class Database:
             return []
 
     def get_entries_by_vehicle(self, vehicle_name: str) -> list:
+        """Retrieve entries for a specific vehicle.
+
+        Args:
+            vehicle_name: Vehicle name to filter by.
+
+        Returns:
+            List of DbDailyEntry objects.
+        """
         try:
             with self._session() as session:
                 rows = (
@@ -130,6 +189,14 @@ class Database:
             return []
 
     def get_recent_emails(self, limit: int = 10) -> list:
+        """Retrieve the most recently processed emails.
+
+        Args:
+            limit: Maximum number of emails to return.
+
+        Returns:
+            List of DbProcessedEmail objects.
+        """
         try:
             with self._session() as session:
                 rows = (
@@ -154,6 +221,19 @@ class Database:
         source_file: Optional[str] = None,
         email_id: Optional[str] = None,
     ) -> bool:
+        """Save or update an income/expense record.
+
+        Args:
+            vehicle_name: Name of the vehicle.
+            entry_date: Date of the entry.
+            kilometers: Optional kilometers value.
+            notes: Optional notes text.
+            source_file: Optional source file name.
+            email_id: Optional Gmail message ID.
+
+        Returns:
+            True if saved successfully, False otherwise.
+        """
         try:
             with self._session() as session:
                 existing = (
@@ -182,6 +262,14 @@ class Database:
             return False
 
     def get_income_by_vehicle(self, vehicle_name: str) -> list:
+        """Retrieve income records for a specific vehicle.
+
+        Args:
+            vehicle_name: Vehicle name to filter by.
+
+        Returns:
+            List of IncomeExpense objects.
+        """
         try:
             with self._session() as session:
                 rows = (

@@ -4,12 +4,23 @@ import { RAGService } from '../rag/rag.service';
 import { pipelineBridge } from './pipeline-bridge.service';
 import { logger } from '../utils/logger';
 
+/**
+ * Orchestrates the end-to-end processing of an incoming email:
+ * fetches content, runs PDF attachments through the pipeline, and
+ * generates an AI draft reply enriched with RAG context.
+ */
 export class EmailProcessorService {
   constructor(
     private readonly aiService: AIService,
     private readonly ragService: RAGService,
   ) {}
 
+  /**
+   * Fetches the full message, processes any PDF attachments via the pipeline
+   * bridge, and creates an AI-generated draft reply.
+   * @param gmailService - Authenticated Gmail API service
+   * @param messageId - The Gmail message ID to process
+   */
   async processEmail(gmailService: GmailService, messageId: string): Promise<void> {
     logger.info('Fetching message', { messageId });
     const message = await gmailService.getMessageContent(messageId);

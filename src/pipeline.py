@@ -9,6 +9,8 @@ from .models.report import ProcessingResult
 
 
 class KilometerPipeline:
+    """Orchestrates the kilometrage report processing pipeline."""
+
     def __init__(
         self,
         excel_path: Optional[str] = None,
@@ -33,6 +35,11 @@ class KilometerPipeline:
         self.gmail_service = None
 
     def _build_sheets_updater(self):
+        """Build and return a SheetsUpdater, or None if misconfigured.
+
+        Returns:
+            SheetsUpdater instance or None.
+        """
         if not self.sheets_id or not self.service_account_file:
             return None
         from .sheets.auth import SheetsAuthManager
@@ -42,6 +49,11 @@ class KilometerPipeline:
         return SheetsUpdater(spreadsheet)
 
     def _build_ingresos_updater(self):
+        """Build and return an IngresosSheetUpdater, or None if misconfigured.
+
+        Returns:
+            IngresosSheetUpdater instance or None.
+        """
         if not self.sheets_ingresos_id or not self.service_account_file:
             return None
         from .sheets.auth import SheetsAuthManager
@@ -51,6 +63,14 @@ class KilometerPipeline:
         return IngresosSheetUpdater(spreadsheet)
 
     def update_summary_formulas(self, year: int = 2026) -> int:
+        """Update summary formulas in the spreadsheet.
+
+        Args:
+            year: The year for formula calculations.
+
+        Returns:
+            Number of formula cells updated.
+        """
         if not self.sheets_id or not self.service_account_file:
             self.logger.warning("No sheets_id o service_account, no se puede actualizar resumen")
             return 0
@@ -64,6 +84,15 @@ class KilometerPipeline:
         return count
 
     def run(self, max_emails: int = 10, query: Optional[str] = None) -> list[ProcessingResult]:
+        """Run the full pipeline: fetch emails, process attachments, write results.
+
+        Args:
+            max_emails: Maximum number of emails to process.
+            query: Optional Gmail search query filter.
+
+        Returns:
+            List of ProcessingResult objects.
+        """
         self.logger.info("=" * 50)
         self.logger.info("Iniciando pipeline de kilometraje")
         self.logger.info("=" * 50)
@@ -129,6 +158,14 @@ class KilometerPipeline:
         return results
 
     def process_single_pdf(self, pdf_path: str) -> list:
+        """Process a single PDF file directly without fetching from Gmail.
+
+        Args:
+            pdf_path: Path to the PDF file.
+
+        Returns:
+            List of extracted reports.
+        """
         from .pdf.extractor import extract_reports_from_pdf
 
         self.logger.info(f"Procesando PDF: {pdf_path}")

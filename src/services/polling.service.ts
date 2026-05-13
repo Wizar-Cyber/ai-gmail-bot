@@ -14,6 +14,10 @@ const PROCESSED_FILE = 'data/processed-messages.json';
 
 const emailProcessor = new EmailProcessorService(new AIService(), new RAGService());
 
+/**
+ * Reads the set of previously processed message IDs from disk.
+ * Returns an empty set if the file does not exist yet.
+ */
 async function loadProcessedIds(): Promise<Set<string>> {
   try {
     const raw = await fs.readFile(path.resolve(PROCESSED_FILE), 'utf-8');
@@ -23,6 +27,9 @@ async function loadProcessedIds(): Promise<Set<string>> {
   }
 }
 
+/**
+ * Persists a newly processed message ID so it is skipped on future polls.
+ */
 async function saveProcessedId(messageId: string): Promise<void> {
   const ids = await loadProcessedIds();
   ids.add(messageId);
@@ -30,6 +37,10 @@ async function saveProcessedId(messageId: string): Promise<void> {
   await fs.writeFile(PROCESSED_FILE, JSON.stringify([...ids]), 'utf-8');
 }
 
+/**
+ * Fetches a single message and runs it through the email processor,
+ * then marks it as processed on disk.
+ */
 async function processMessage(gmailService: GmailService, messageId: string): Promise<void> {
   logger.info('Polling: fetching message', { messageId });
 
@@ -37,6 +48,10 @@ async function processMessage(gmailService: GmailService, messageId: string): Pr
   await saveProcessedId(messageId);
 }
 
+/**
+ * One polling cycle: loads OAuth tokens, lists unread messages,
+ * filters out already-processed IDs, and processes each new message.
+ */
 async function poll(): Promise<void> {
   try {
     const tokens = await tokenRepository.load();
@@ -77,6 +92,10 @@ async function poll(): Promise<void> {
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Starts the background polling loop. Runs an initial poll immediately,
+ * then repeats every POLL_INTERVAL (or env.POLL_INTERVAL) milliseconds.
+ */
 export function startPolling(): void {
   const interval = parseInt(env.POLL_INTERVAL || String(POLL_INTERVAL_MS), 10);
 
@@ -86,6 +105,9 @@ export function startPolling(): void {
   intervalHandle = setInterval(poll, interval);
 }
 
+/**
+ * Stops the background polling loop if it is currently running.
+ */
 export function stopPolling(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);

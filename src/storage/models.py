@@ -11,6 +11,8 @@ class Base(DeclarativeBase):
 
 
 class DbProcessedEmail(Base):
+    """Represents a processed email record in the database."""
+
     __tablename__ = "processed_emails"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -25,6 +27,8 @@ class DbProcessedEmail(Base):
 
 
 class DbDailyEntry(Base):
+    """Represents a daily kilometrage entry in the database."""
+
     __tablename__ = "daily_entries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -48,6 +52,8 @@ class DbDailyEntry(Base):
 
 
 class IncomeExpense(Base):
+    """Represents an income/expense record for a vehicle in the database."""
+
     __tablename__ = "income_expenses"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

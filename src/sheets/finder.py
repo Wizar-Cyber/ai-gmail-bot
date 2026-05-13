@@ -66,15 +66,33 @@ class RowFinder:
     """Finds the correct row for a date, respecting month sections with TOTAL separators."""
 
     def __init__(self, worksheet: gspread.Worksheet):
+        """Initialize with a worksheet.
+
+        Args:
+            worksheet: A gspread Worksheet instance.
+        """
         self.ws = worksheet
         self._cache: list[list] | None = None
 
     def _values(self) -> list[list]:
+        """Return all worksheet values, using a cached copy on subsequent calls.
+
+        Returns:
+            List of rows, each row being a list of cell strings.
+        """
         if self._cache is None:
             self._cache = self.ws.get_all_values()
         return self._cache
 
     def _try_parse_date(self, cell_val: str) -> Optional[date]:
+        """Try to parse a cell value as a date using known formats.
+
+        Args:
+            cell_val: The cell string value.
+
+        Returns:
+            A date object if parsing succeeds, None otherwise.
+        """
         for fmt in _DATE_FORMATS:
             try:
                 return datetime.strptime(cell_val, fmt).date()
@@ -83,9 +101,26 @@ class RowFinder:
         return None
 
     def _is_separator(self, cell_val: str) -> bool:
+        """Check if a cell value is a section separator keyword.
+
+        Args:
+            cell_val: The cell string value.
+
+        Returns:
+            True if the value is a separator keyword.
+        """
         return cell_val.upper() in ("TOTAL", "FECHA", "MES", "SUBTOTAL", "TOTALES")
 
     def find_date_row(self, target_date: date, date_col: int = 3) -> Optional[int]:
+        """Find the row number for a target date, inserting a new row if not found.
+
+        Args:
+            target_date: The date to locate.
+            date_col: The 1-indexed column containing dates (default 3).
+
+        Returns:
+            The 1-indexed row number, or None if no date rows exist.
+        """
         col_idx = date_col - 1
         values = self._values()
 
