@@ -14,5 +14,16 @@
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/routes/auth.route.ts",
+    "src/routes/watch.route.ts",
+    "src/routes/webhook.route.ts",
+    "src/middlewares/webhook.middleware.ts",
+    "src/config/oauth.config.ts",
+    "src/repositories/token.repository.ts",
+    "src/repositories/watch.repository.ts",
+    "src/services/gmail.service.ts"
+  ]
 }

@@ -8,6 +8,7 @@ import { AIService } from '../services/ai.service';
 import { RAGService } from '../rag/rag.service';
 import { validatePubSubToken } from '../middlewares/webhook.middleware';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -18,6 +19,11 @@ router.post(
   validatePubSubToken,
   async (req: Request, res: Response) => {
     res.status(200).send('OK');
+
+    if (env.DISABLE_DRAFTS) {
+      logger.info('Draft bot is disabled via DISABLE_DRAFTS env var — skipping webhook processing');
+      return;
+    }
 
     try {
       const pubSubMessage = req.body?.message;

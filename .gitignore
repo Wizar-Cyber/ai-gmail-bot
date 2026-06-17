@@ -9,6 +9,7 @@ dist/
 
 # OAuth tokens — contain sensitive refresh tokens
 .tokens.json
+.tokens_send.json
 
 # Google credentials — NEVER commit
 service_account.json

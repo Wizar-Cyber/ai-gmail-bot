@@ -12,18 +12,17 @@ server.listen(env.PORT, () => {
   logger.info('Server started', {
     port: env.PORT,
     environment: env.NODE_ENV,
-    aiProvider: env.AI_PROVIDER,
-    endpoints: {
-      authInit: `http://localhost:${env.PORT}/auth/google`,
-      webhook: `http://localhost:${env.PORT}/webhook/gmail`,
-      health: `http://localhost:${env.PORT}/health`,
-    },
+    webmailAccounts: env.accounts.length,
+    folders: env.WEBMAIL_FOLDERS,
   });
 
-  startPolling();
+  if (!env.DISABLE_DRAFTS) {
+    startPolling();
+  } else {
+    logger.info('Draft bot disabled via DISABLE_DRAFTS env var — polling not started');
+  }
 });
 
-/** Gracefully close the HTTP server and exit the process. */
 function shutdown(signal: string): void {
   logger.info(`${signal} received — shutting down gracefully`);
   server.close(() => {

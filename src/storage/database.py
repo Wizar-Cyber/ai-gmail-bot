@@ -25,8 +25,20 @@ class Database:
             "DATABASE_URL",
             f"sqlite:///{os.getenv('DB_PATH', 'data/processed.db')}",
         )
-        self._engine = create_engine(self.db_url, echo=False)
+        self._engine = self._create_engine_with_fallback()
         self._init_db()
+
+    def _create_engine_with_fallback(self):
+        """Create engine with automatic fallback to SQLite if PostgreSQL is unavailable."""
+        try:
+            engine = create_engine(self.db_url, echo=False)
+            engine.connect().close()
+            return engine
+        except Exception as e:
+            logger.warning(f"No se pudo conectar a {self.db_url}: {e}")
+            fallback = f"sqlite:///{os.getenv('DB_PATH', 'data/processed.db')}"
+            logger.info(f"Usando SQLite como fallback: {fallback}")
+            return create_engine(fallback, echo=False)
 
     def _init_db(self):
         """Create all database tables if they don't exist."""

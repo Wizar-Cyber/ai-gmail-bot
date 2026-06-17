@@ -4,6 +4,8 @@ import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { spawnAndWait } from '../utils/exec';
 
+const PDF_MAGIC = Buffer.from('%PDF');
+
 /** Result of executing the external Python pipeline on a PDF. */
 export interface PipelineResult {
   success: boolean;
@@ -76,13 +78,23 @@ export class PipelineBridgeService {
 
   /**
    * Saves the attachment to disk and processes it through the pipeline,
-   * but only if the filename ends with ".pdf".
-   * @param filename - Attachment filename (case-insensitive ".pdf" check)
+   * but only if the filename ends with ".pdf" or the MIME type indicates PDF.
+   * @param filename - Attachment filename
    * @param data - Raw file bytes
+   * @param mimeType - Optional MIME type of the attachment
    * @returns Pipeline result, or null if the file is not a PDF
    */
-  async processPdfIfExists(filename: string, data: Buffer): Promise<PipelineResult | null> {
-    if (!filename.toLowerCase().endsWith('.pdf')) {
+  async processPdfIfExists(filename: string, data: Buffer, mimeType?: string): Promise<PipelineResult | null> {
+    const fn = filename.toLowerCase();
+    const mime = (mimeType || '').toLowerCase();
+    const isPdf = fn.endsWith('.pdf') || mime === 'application/pdf';
+    if (!isPdf) {
+      return null;
+    }
+
+    // Validate PDF magic bytes to prevent processing non-PDF files
+    if (data.length < PDF_MAGIC.length || data.subarray(0, PDF_MAGIC.length).compare(PDF_MAGIC) !== 0) {
+      logger.warn('File rejected: not a valid PDF (missing %PDF header)', { filename });
       return null;
     }
     const filePath = await this.saveAttachment(filename, data);

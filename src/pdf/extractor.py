@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Optional
 from ..models.vehicle import Vehicle
@@ -6,9 +7,23 @@ from ..normalization.numbers import safe_normalize_number
 from ..normalization.dates import parse_date_from_row
 from ..normalization.vehicles import extract_vehicle_and_plate
 
+logger = logging.getLogger("km_automation")
+
+PDF_MAGIC = b"%PDF"
+
 
 class PDFParseError(Exception):
     pass
+
+
+def is_valid_pdf(file_path: str) -> bool:
+    """Verifica que el archivo tenga los bytes mágicos de PDF (%PDF)."""
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(len(PDF_MAGIC))
+            return header == PDF_MAGIC
+    except Exception:
+        return False
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
@@ -107,6 +122,8 @@ def parse_data_rows(section_text: str) -> list[DailyEntry]:
 
 def extract_reports_from_pdf(pdf_path: str) -> list[VehicleReport]:
     """Extrae todos los reportes de vehículos de un PDF."""
+    if not is_valid_pdf(pdf_path):
+        raise PDFParseError(f"No es un PDF válido (cabecera %PDF no encontrada): {pdf_path}")
     full_text = extract_text_from_pdf(pdf_path)
     sections = split_vehicle_sections(full_text)
 
@@ -131,7 +148,7 @@ def extract_reports_from_pdf(pdf_path: str) -> list[VehicleReport]:
                 reports.append(report)
 
         except Exception as e:
-            print(f"Error parseando sección: {e}")
+            logger.warning(f"Error parseando sección: {e}")
             continue
 
     return reports

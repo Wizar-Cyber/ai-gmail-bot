@@ -103,28 +103,37 @@ class SheetFinder:
 
     def find_vehicle_sheet(self, vehicle_name: str, vehicle_plate: str = "") -> Optional[object]:
         import difflib
+        from difflib import SequenceMatcher
         
         normalize = lambda s: re.sub(r'[\s,\.]+', '', s.lower()) if s else ""
         
         search_key = self._extract_model_key(vehicle_name)
+        search_norm = normalize(vehicle_name)
         
-        candidates = []
+        best_match = None
+        best_ratio = 0.6
+        
         for sheet_name in self.wb.sheetnames:
             sheet_norm = normalize(sheet_name)
-            search_norm = normalize(vehicle_name)
             
             if search_norm and search_norm in sheet_norm:
+                return self.wb[sheet_name]
+            if sheet_norm and sheet_norm in search_norm:
                 return self.wb[sheet_name]
             
             sheet_key = self._extract_model_key(sheet_name)
             if search_key and sheet_key and search_key in sheet_key:
                 return self.wb[sheet_name]
-            
-            candidates.append((sheet_name, sheet_norm))
-        
-        for sheet_name, sheet_norm in candidates:
-            if normalize(vehicle_name) in sheet_norm:
+            if search_key and sheet_key and sheet_key in search_key:
                 return self.wb[sheet_name]
+            
+            ratio = SequenceMatcher(None, search_norm, sheet_norm).ratio()
+            if ratio >= best_ratio:
+                best_ratio = ratio
+                best_match = sheet_name
+        
+        if best_match:
+            return self.wb[best_match]
         
         if vehicle_plate:
             for sheet_name in self.wb.sheetnames:

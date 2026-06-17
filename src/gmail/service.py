@@ -65,7 +65,7 @@ class GmailService:
             metadata = self.get_email_metadata(message_id)
             result.email_id = message_id
 
-            logger.info(f"Procesando email: {metadata.get('subject', 'Sin asunto')}")
+            logger.info(f"Procesando email: {metadata.get('subject') or 'Sin asunto'}")
 
             attachments = self.download_attachments(message_id, output_dir)
             result.attachments = [a.filename for a in attachments if a.is_pdf()]

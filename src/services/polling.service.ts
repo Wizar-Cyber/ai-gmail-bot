@@ -1,23 +1,33 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { oauth2Client } from '../config/oauth.config';
-import { tokenRepository } from '../repositories/token.repository';
-import { GmailService } from '../services/gmail.service';
-import { EmailProcessorService } from '../services/email-processor.service';
-import { AIService } from '../services/ai.service';
+import { WebmailService, WebmailConfig } from './webmail.service';
+import { EmailProcessorService, SmtpConfig } from './email-processor.service';
+import { AIService } from './ai.service';
 import { RAGService } from '../rag/rag.service';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+
+type AccountConfig = WebmailConfig & SmtpConfig;
 
 const POLL_INTERVAL_MS = 30_000;
 const PROCESSED_FILE = 'data/processed-messages.json';
 
 const emailProcessor = new EmailProcessorService(new AIService(), new RAGService());
 
-/**
- * Reads the set of previously processed message IDs from disk.
- * Returns an empty set if the file does not exist yet.
- */
+function getWebmailConfigs(): AccountConfig[] {
+  return env.accounts.map((acc) => ({
+    host: env.WEBMAIL_HOST,
+    port: env.WEBMAIL_PORT,
+    username: acc.username,
+    password: acc.password,
+    tls: env.WEBMAIL_TLS,
+    user: acc.username,
+    pass: acc.password,
+  }));
+}
+
+const FOLDERS = env.WEBMAIL_FOLDERS.split(',').map((f) => f.trim()).filter(Boolean);
+
 async function loadProcessedIds(): Promise<Set<string>> {
   try {
     const raw = await fs.readFile(path.resolve(PROCESSED_FILE), 'utf-8');
@@ -27,9 +37,6 @@ async function loadProcessedIds(): Promise<Set<string>> {
   }
 }
 
-/**
- * Persists a newly processed message ID so it is skipped on future polls.
- */
 async function saveProcessedId(messageId: string): Promise<void> {
   const ids = await loadProcessedIds();
   ids.add(messageId);
@@ -37,77 +44,73 @@ async function saveProcessedId(messageId: string): Promise<void> {
   await fs.writeFile(PROCESSED_FILE, JSON.stringify([...ids]), 'utf-8');
 }
 
-/**
- * Fetches a single message and runs it through the email processor,
- * then marks it as processed on disk.
- */
-async function processMessage(gmailService: GmailService, messageId: string): Promise<void> {
-  logger.info('Polling: fetching message', { messageId });
-
-  await emailProcessor.processEmail(gmailService, messageId);
-  await saveProcessedId(messageId);
-}
-
-/**
- * One polling cycle: loads OAuth tokens, lists unread messages,
- * filters out already-processed IDs, and processes each new message.
- */
 async function poll(): Promise<void> {
-  try {
-    const tokens = await tokenRepository.load();
-    if (!tokens?.refresh_token) {
-      logger.debug('Polling: no tokens yet, skipping');
-      return;
+  const configs = getWebmailConfigs();
+
+  if (configs.length === 0) {
+    logger.warn('No webmail accounts configured');
+    return;
+  }
+
+  const processed = await loadProcessedIds();
+
+  for (const cfg of configs) {
+    const service = new WebmailService(cfg);
+
+    try {
+      const messages = await service.pollAccount(FOLDERS);
+
+      for (const msg of messages) {
+        if (processed.has(msg.messageId)) {
+          logger.debug(`Skipping already processed ${msg.messageId}`);
+          continue;
+        }
+
+        logger.info(`Processing from ${cfg.username} [${msg.folder}]`, {
+          subject: msg.subject.substring(0, 80),
+          pdfs: msg.pdfAttachments.length,
+        });
+
+        await emailProcessor
+          .processEmail(
+            async () => msg.pdfAttachments,
+            {
+              messageId: msg.messageId,
+              subject: msg.subject,
+              from: msg.from,
+              body: msg.body,
+            },
+            {
+              host: env.WEBMAIL_SMTP_HOST,
+              port: env.WEBMAIL_SMTP_PORT,
+              tls: env.WEBMAIL_SMTP_TLS,
+              user: cfg.user,
+              pass: cfg.pass,
+            },
+          )
+          .catch((err: Error) => {
+            logger.error(`Failed to process ${msg.messageId}`, { error: err.message });
+          });
+
+        await saveProcessedId(msg.messageId);
+      }
+    } catch (err: any) {
+      logger.error(`Polling error for ${cfg.username}`, { error: err.message });
     }
-
-    oauth2Client.setCredentials(tokens);
-    const gmailService = new GmailService(oauth2Client);
-
-    const unread = await gmailService.listUnreadMessages(50);
-    if (unread.length === 0) {
-      logger.info('Polling: sin correos nuevos');
-      return;
-    }
-
-    const processed = await loadProcessedIds();
-    const pending = unread.filter((m) => m.id && !processed.has(m.id));
-
-    if (pending.length === 0) {
-      logger.info(`Polling: ${unread.length} no leídos, todos ya procesados antes`);
-      return;
-    }
-
-    logger.info(`Polling: ${pending.length} correo(s) nuevo(s) por procesar`);
-
-    for (const msg of pending) {
-      if (!msg.id) continue;
-      await processMessage(gmailService, msg.id).catch((err: Error) => {
-        logger.error(`Polling: failed to process ${msg.id}`, { error: err.message });
-      });
-    }
-  } catch (err: any) {
-    logger.error('Polling cycle error', { error: err.message });
   }
 }
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Starts the background polling loop. Runs an initial poll immediately,
- * then repeats every POLL_INTERVAL (or env.POLL_INTERVAL) milliseconds.
- */
 export function startPolling(): void {
   const interval = parseInt(env.POLL_INTERVAL || String(POLL_INTERVAL_MS), 10);
-
-  logger.info(`Polling started every ${interval / 1000}s`);
+  logger.info(`Webmail polling started every ${interval / 1000}s for ${env.accounts.length} account(s)`);
+  logger.info(`Folders: ${FOLDERS.join(', ')}`);
 
   poll();
   intervalHandle = setInterval(poll, interval);
 }
 
-/**
- * Stops the background polling loop if it is currently running.
- */
 export function stopPolling(): void {
   if (intervalHandle) {
     clearInterval(intervalHandle);

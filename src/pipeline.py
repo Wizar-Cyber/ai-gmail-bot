@@ -166,6 +166,13 @@ class KilometerPipeline:
         Returns:
             List of extracted reports.
         """
+        import os
+        if not os.path.isfile(pdf_path):
+            self.logger.error(f"El archivo no existe: {pdf_path}")
+            return []
+        if not pdf_path.lower().endswith('.pdf'):
+            self.logger.warning(f"El archivo no tiene extensión .pdf, se intentará procesar igual: {pdf_path}")
+
         from .pdf.extractor import extract_reports_from_pdf
 
         self.logger.info(f"Procesando PDF: {pdf_path}")

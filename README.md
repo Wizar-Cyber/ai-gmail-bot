@@ -171,6 +171,43 @@ PUBSUB_VERIFICATION_TOKEN=un_token_largo_y_aleatorio
 TOKEN_STORE_PATH=.tokens.json
 ```
 
+### Desactivar / Reactivar generación de borradores
+
+Por seguridad o para mantenimiento puedes desactivar temporalmente que el bot cree borradores automáticos.
+
+- Desactivar (NO se crearán borradores):
+
+```bash
+# En el fichero .env
+DISABLE_DRAFTS=true
+
+# O exportando la variable en el entorno antes de arrancar
+export DISABLE_DRAFTS=true
+```
+
+- Reactivar (se crearán borradores otra vez):
+
+```bash
+# En el fichero .env
+DISABLE_DRAFTS=false
+
+# O exportando la variable en el entorno antes de arrancar
+export DISABLE_DRAFTS=false
+```
+
+Después de cambiar la variable debes reiniciar el servicio para que la nueva configuración se aplique. Ejemplos:
+
+```bash
+docker compose up -d --build
+# o (si no usas Docker)
+npm run start
+```
+
+Notas:
+- El proyecto por defecto evita usar el scope `gmail.send`; el bot crea borradores con `users.drafts.create` para revisión manual.
+- Durante esta sesión se añadieron variables temporales a `.env` (`WEBMAIL_HOST` y `GEMINI_API_KEY`) para permitir que el contenedor arranque sin errores — no son obligatorias en producción y puedes eliminarlas si no las necesitas.
+
+
 ---
 
 ## Google Cloud Setup

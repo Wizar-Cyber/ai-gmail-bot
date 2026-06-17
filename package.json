@@ -1,7 +1,7 @@
 {
   "name": "ai-gmail-bot",
   "version": "2.0.0",
-  "description": "AI-powered Gmail automation using Google APIs and LLMs (Gemini / GPT-4o)",
+  "description": "Webmail bot that reads emails via IMAP (3 accounts, INBOX + Spam), downloads mileage PDFs and processes them through the kilometraje pipeline",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && cp src/rag/faq.json dist/rag/faq.json",
@@ -10,7 +10,14 @@
     "auth": "tsx src/scripts/auth.ts",
     "test:pipeline": "tsx src/scripts/test-pipeline.ts"
   },
-  "keywords": ["gmail", "ai", "bot", "typescript", "google-cloud", "pubsub"],
+  "keywords": [
+    "gmail",
+    "ai",
+    "bot",
+    "typescript",
+    "google-cloud",
+    "pubsub"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -18,13 +25,19 @@
     "dotenv": "^16.4.5",
     "express": "^4.18.3",
     "googleapis": "^171.4.0",
+    "imap": "^0.8.19",
+    "mailparser": "^3.9.8",
+    "nodemailer": "^8.0.9",
     "openai": "^4.47.0",
     "uuid": "^10.0.0",
     "winston": "^3.13.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/imap": "^0.8.43",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^20.14.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.15.0",
     "typescript": "^5.4.5"

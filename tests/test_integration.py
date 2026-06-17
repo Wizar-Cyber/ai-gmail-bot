@@ -33,7 +33,11 @@ class TestIntegration:
     def test_database_operations(self):
         """Testea operaciones de base de datos."""
         from src.storage.database import Database
-        db = Database("sqlite:///data/test.db")
+        import os
+        test_db = "sqlite:///data/test_integration.db"
+        if os.path.exists("data/test_integration.db"):
+            os.remove("data/test_integration.db")
+        db = Database(test_db)
 
         result = db.save_entry(
             vehicle_name="MERCEDES E200",
@@ -50,6 +54,7 @@ class TestIntegration:
 
         entries = db.get_entries_by_date("2026-04-01", "2026-04-30")
         print(f"Entries in date range: {len(entries)}")
+        assert len(entries) >= 1
 
     def test_excel_finder_with_real_file(self):
         """Testea finder con el Excel real."""

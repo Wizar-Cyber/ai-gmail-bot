@@ -1,7 +1,9 @@
 import re
 from datetime import date, datetime
+from difflib import SequenceMatcher
 from typing import Optional
 import gspread
+import gspread.utils
 
 
 from ..normalization.dates import DATE_FORMATS as _DATE_FORMATS, MONTH_DAY_FORMATS as _MONTH_DAY_FORMATS
@@ -33,13 +35,29 @@ class BaseSheetFinder:
         search_key = self._extract_model_key(vehicle_name)
         worksheets = self.spreadsheet.worksheets()
 
+        best_match = None
+        best_ratio = 0.6
+
         for ws in worksheets:
             sheet_norm = self._normalize(ws.title)
+            sheet_key = self._extract_model_key(ws.title)
+
             if search_norm and search_norm in sheet_norm:
                 return ws
-            sheet_key = self._extract_model_key(ws.title)
+            if sheet_norm and sheet_norm in search_norm:
+                return ws
             if search_key and sheet_key and search_key in sheet_key:
                 return ws
+            if search_key and sheet_key and sheet_key in search_key:
+                return ws
+
+            ratio = SequenceMatcher(None, search_norm, sheet_norm).ratio()
+            if ratio >= best_ratio:
+                best_ratio = ratio
+                best_match = ws
+
+        if best_match:
+            return best_match
 
         if vehicle_plate:
             plate_norm = vehicle_plate.lower().strip()
@@ -111,8 +129,123 @@ class RowFinder:
         """
         return cell_val.upper() in ("TOTAL", "FECHA", "MES", "SUBTOTAL", "TOTALES")
 
+    def _month_section_exists(self, values: list[list], target_date: date) -> bool:
+        target_name = _MONTH_NAMES_UPPER[target_date.month]
+        target_str = f"{target_name} {target_date.year}"
+        for row in values:
+            for cell in row:
+                if cell and target_str in cell.strip().upper():
+                    return True
+        return False
+
+    def _find_last_section_rows(self, values: list[list], date_col: int = 3) -> tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
+        col_idx = date_col - 1
+        month_headers = []
+        for row_idx, row in enumerate(values):
+            row_text = " ".join(c.strip().upper() for c in row if c)
+            for m_name in _MONTH_NAMES_UPPER[1:]:
+                if m_name in row_text and re.search(r'\b\d{4}\b', row_text):
+                    month_headers.append(row_idx + 1)
+                    break
+
+        if not month_headers:
+            return None, None, None, None
+
+        last_mh_row = month_headers[-1]
+        last_col_row = last_mh_row + 1
+        first_data = None
+        total_row = None
+
+        for row_idx in range(last_col_row + 1, min(last_col_row + 60, len(values) + 1)):
+            row = values[row_idx - 1]
+            if first_data and total_row is None:
+                for cell in row:
+                    if cell and cell.strip().upper() == "TOTAL":
+                        total_row = row_idx
+                        break
+            if first_data is None and col_idx < len(row):
+                cell_val = row[col_idx].strip() if row[col_idx] else ""
+                if cell_val and not self._is_separator(cell_val):
+                    parsed = self._try_parse_date(cell_val)
+                    if parsed:
+                        first_data = row_idx
+
+        return last_mh_row, last_col_row, first_data, total_row
+
+    def _create_month_section(self, after_row_1: int, target_date: date, values: list[list]) -> None:
+        rows_to_insert = 4
+        body = {"requests": [{
+            "insertDimension": {
+                "range": {
+                    "sheetId": self.ws.id,
+                    "dimension": "ROWS",
+                    "startIndex": after_row_1,
+                    "endIndex": after_row_1 + rows_to_insert,
+                }
+            }
+        }]}
+        self.ws.spreadsheet.batch_update(body)
+
+        month_row = after_row_1 + 1
+        target_name = _MONTH_NAMES_UPPER[target_date.month]
+        self.ws.update_cell(month_row, 2, f"MES: {target_name.title()} {target_date.year}")
+
+        header_row = _find_header_row(self.ws, ["FECHA", "KILOMETRAJE"])
+        header_vals = self.ws.row_values(header_row)
+        col_header_row = month_row + 1
+        for ci, val in enumerate(header_vals, 1):
+            if val:
+                self.ws.update_cell(col_header_row, ci, val)
+
+        ref_mh, ref_col, ref_data, ref_total = self._find_last_section_rows(values)
+        requests = []
+        cols = len(header_vals) + 1
+
+        if ref_mh:
+            requests.append({
+                "copyPaste": {
+                    "source": {"sheetId": self.ws.id, "startRowIndex": ref_mh - 1, "endRowIndex": ref_mh, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "destination": {"sheetId": self.ws.id, "startRowIndex": month_row - 1, "endRowIndex": month_row, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "pasteType": "PASTE_FORMAT",
+                }
+            })
+
+        if ref_col:
+            requests.append({
+                "copyPaste": {
+                    "source": {"sheetId": self.ws.id, "startRowIndex": ref_col - 1, "endRowIndex": ref_col, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "destination": {"sheetId": self.ws.id, "startRowIndex": col_header_row - 1, "endRowIndex": col_header_row, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "pasteType": "PASTE_FORMAT",
+                }
+            })
+
+        if ref_data:
+            requests.append({
+                "copyPaste": {
+                    "source": {"sheetId": self.ws.id, "startRowIndex": ref_data - 1, "endRowIndex": ref_data, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "destination": {"sheetId": self.ws.id, "startRowIndex": month_row + 1, "endRowIndex": month_row + 2, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "pasteType": "PASTE_FORMAT",
+                }
+            })
+
+        total_data_row = month_row + 2
+        if ref_total:
+            requests.append({
+                "copyPaste": {
+                    "source": {"sheetId": self.ws.id, "startRowIndex": ref_total - 1, "endRowIndex": ref_total, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "destination": {"sheetId": self.ws.id, "startRowIndex": total_data_row, "endRowIndex": total_data_row + 1, "startColumnIndex": 0, "endColumnIndex": cols},
+                    "pasteType": "PASTE_NORMAL",
+                }
+            })
+
+        if requests:
+            self.ws.spreadsheet.batch_update({"requests": requests})
+
     def find_date_row(self, target_date: date, date_col: int = 3) -> Optional[int]:
         """Find the row number for a target date, inserting a new row if not found.
+
+        Automatically creates a month section header (month name + column headers)
+        when the target date belongs to a new month that has no section yet.
 
         Args:
             target_date: The date to locate.
@@ -151,6 +284,22 @@ class RowFinder:
 
         date_rows.sort(key=lambda x: x[0])
 
+        target_month_start = date(target_date.year, target_date.month, 1)
+        dates_before = [(d, r) for d, r in date_rows if d < target_month_start]
+        if dates_before:
+            last_before_row = dates_before[-1][1]
+            if not self._month_section_exists(values, target_date):
+                insert_after = last_before_row
+                scan_limit = min(last_before_row + 10, len(values))
+                for r in range(last_before_row, scan_limit):
+                    for cell in values[r]:
+                        if cell and cell.strip().upper() == "TOTAL":
+                            insert_after = r + 1
+                            break
+                self._create_month_section(insert_after, target_date, values)
+                self._cache = None
+                return insert_after + 3
+
         for d, row_num in date_rows:
             if d > target_date:
                 body = {
@@ -172,7 +321,7 @@ class RowFinder:
 
 
 def _find_header_row(worksheet: gspread.Worksheet, headers: list[str]) -> int:
-    """Scan worksheet rows 1-30 to find the data header row.
+    """Scan ALL worksheet rows to find the data header row.
 
     Prefers rows containing both FECHA and KILOMETRAJE together.
     Falls back to the first row matching any single header.
@@ -181,7 +330,7 @@ def _find_header_row(worksheet: gspread.Worksheet, headers: list[str]) -> int:
     header_lower = [h.lower() for h in headers]
     best_row = 3
 
-    for row_idx, row in enumerate(values[:30]):
+    for row_idx, row in enumerate(values):
         row_cells = [c.lower().strip() for c in row if c]
         matched = [h for h in header_lower if any(h in c for c in row_cells)]
 
@@ -216,3 +365,12 @@ def find_column_by_header(
             if header.lower() in cell_clean:
                 mapping[header] = col_idx
     return mapping
+
+
+_MONTH_NAMES_UPPER = [
+    "", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
+]
+
+
+

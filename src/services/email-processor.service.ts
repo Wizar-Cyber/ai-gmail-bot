@@ -1,45 +1,49 @@
-import { GmailService, AttachmentData } from './gmail.service';
+import nodemailer from 'nodemailer';
+import { AttachmentData } from './webmail.service';
 import { AIService } from './ai.service';
 import { RAGService } from '../rag/rag.service';
 import { pipelineBridge } from './pipeline-bridge.service';
 import { logger } from '../utils/logger';
 
-/**
- * Orchestrates the end-to-end processing of an incoming email:
- * fetches content, runs PDF attachments through the pipeline, and
- * generates an AI draft reply enriched with RAG context.
- */
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  tls: boolean;
+  user: string;
+  pass: string;
+}
+
 export class EmailProcessorService {
   constructor(
     private readonly aiService: AIService,
     private readonly ragService: RAGService,
   ) {}
 
-  /**
-   * Fetches the full message, processes any PDF attachments via the pipeline
-   * bridge, and creates an AI-generated draft reply.
-   * @param gmailService - Authenticated Gmail API service
-   * @param messageId - The Gmail message ID to process
-   */
-  async processEmail(gmailService: GmailService, messageId: string): Promise<void> {
-    logger.info('Fetching message', { messageId });
-    const message = await gmailService.getMessageContent(messageId);
+  async processEmail(
+    getPdfAttachments: () => Promise<AttachmentData[]>,
+    context: { messageId: string; subject: string; from: string; body: string },
+    smtp: SmtpConfig,
+  ): Promise<void> {
+    const { messageId, subject, from: originalSender, body } = context;
 
-    logger.info('Message parsed', {
-      messageId,
-      subject: message.subject || '(sin asunto)',
-      from: message.from,
-    });
+    logger.info('Processing message', { messageId, subject: subject || '(sin asunto)', from: originalSender });
 
-    // Process PDF attachments
+    let hasPdfs = false;
     try {
-      const pdfs: AttachmentData[] = await gmailService.getPdfAttachments(messageId);
+      const pdfs = await getPdfAttachments();
       if (pdfs.length > 0) {
-        logger.info(`${pdfs.length} PDF(s) detected, processing...`);
+        hasPdfs = true;
+        logger.info(`${pdfs.length} PDF(s) detected, processing...`, {
+          messageId,
+          filenames: pdfs.map((p) => p.filename),
+        });
         for (const pdf of pdfs) {
-          const result = await pipelineBridge.processPdfIfExists(pdf.filename, pdf.data);
+          const result = await pipelineBridge.processPdfIfExists(pdf.filename, pdf.data, pdf.mimeType);
           if (result) {
-            logger.info(`Pipeline ${result.success ? 'OK' : 'ERROR'} for ${pdf.filename}`);
+            logger.info(`Pipeline ${result.success ? 'OK' : 'ERROR'} for ${pdf.filename}`, {
+              messageId,
+              exitCode: result.exitCode,
+            });
           }
         }
       }
@@ -47,25 +51,42 @@ export class EmailProcessorService {
       logger.error(`Error processing PDFs for ${messageId}`, { error: err.message });
     }
 
-    // Generate AI draft reply
     try {
-      const context = this.ragService.enrichContext(`${message.subject} ${message.body}`);
+      const enriched = this.ragService.enrichContext(`${subject} ${body}`);
       const replyText = await this.aiService.generateReply({
-        subject: message.subject,
-        body: message.body,
-        context: context || undefined,
+        subject,
+        body,
+        context: enriched || undefined,
       });
 
-      const draftId = await gmailService.createDraftReply(message, replyText);
+      const transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.tls,
+        auth: { user: smtp.user, pass: smtp.pass },
+      });
 
-      logger.info('Draft reply created', {
+      const cleanSubject = subject.replace(/^(Re:\s*)+/i, '').trim();
+      const finalSubject = cleanSubject ? `Re: ${cleanSubject}` : '(sin asunto)';
+
+      await transporter.sendMail({
+        from: smtp.user,
+        to: originalSender,
+        subject: finalSubject,
+        text: replyText,
+        inReplyTo: messageId,
+        references: messageId,
+      });
+
+      logger.info('AI reply sent via SMTP', {
         messageId,
-        draftId,
-        subject: message.subject,
-        ragUsed: !!context,
+        to: originalSender,
+        subject: finalSubject,
+        hasPdfs,
+        ragUsed: !!enriched,
       });
     } catch (err: any) {
-      logger.error(`Failed to generate draft for ${messageId}`, { error: err.message });
+      logger.error(`Failed to generate/send reply for ${messageId}`, { error: err.message });
     }
   }
 }

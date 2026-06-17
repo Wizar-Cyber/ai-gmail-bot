@@ -88,7 +88,7 @@ export class GmailService {
     }
 
     const headers = raw.payload.headers ?? [];
-    const subject = getHeader(headers, 'Subject') || '(no subject)';
+    const subject = getHeader(headers, 'Subject') || '';
     const from = getHeader(headers, 'From') || '(unknown sender)';
     const messageIdHeader = getHeader(headers, 'Message-ID');
     const body = extractBodyFromPayload(raw.payload);
@@ -115,13 +115,57 @@ export class GmailService {
    * Returns the id of the created draft.
    */
   async createDraftReply(message: ParsedMessage, responseText: string): Promise<string> {
+    const bodyBase64 = Buffer.from(responseText, 'utf-8').toString('base64');
     // Strip leading "Re:" prefixes to avoid "Re: Re: Re:" accumulation
     const cleanSubject = message.subject.replace(/^(re:\s*)+/i, '').trim();
 
-    // RFC 2822 raw message headers + body.
-    // Content-Transfer-Encoding: base64 allows UTF-8 content to be safely
-    // embedded in the outer raw field (which is also base64url-encoded).
-    const bodyBase64 = Buffer.from(responseText, 'utf-8').toString('base64');
+    // If there's no original subject, omit the Subject header entirely
+    if (!cleanSubject) {
+      const noSubjectLines = [
+        `To: ${message.from}`,
+        `In-Reply-To: ${message.messageIdHeader}`,
+        `References: ${message.messageIdHeader}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        bodyBase64,
+      ];
+
+      const noSubjectEncoded = Buffer.from(noSubjectLines.join('\r\n'))
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      try {
+        const response = await withRetry(() =>
+          this.gmail.users.drafts.create({
+            userId: 'me',
+            requestBody: {
+              message: {
+                raw: noSubjectEncoded,
+                threadId: message.threadId,
+              },
+            },
+          })
+        );
+
+        const draftId = response.data.id!;
+        logger.info('Draft reply created', {
+          draftId,
+          messageId: message.messageId,
+          to: message.from,
+          subject: '(sin subject)',
+        });
+        return draftId;
+      } catch (error) {
+        throw new GmailServiceError(
+          `Failed to create draft reply for message ${message.messageId}`,
+          error
+        );
+      }
+    }
 
     const rawLines = [
       `To: ${message.from}`,
@@ -295,7 +339,9 @@ export class GmailService {
       const parts = this._collectAttachmentParts(response.data.payload);
       for (const part of parts) {
         const fn = (part.filename || '').toLowerCase();
-        if (!fn.endsWith('.pdf')) continue;
+        const mime = (part.mimeType || '').toLowerCase();
+        const isPdf = fn.endsWith('.pdf') || mime === 'application/pdf';
+        if (!isPdf) continue;
 
         const partBody = part.body;
         if (partBody?.attachmentId) {

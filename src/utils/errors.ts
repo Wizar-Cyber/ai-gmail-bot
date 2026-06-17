@@ -65,3 +65,10 @@ export class WatchError extends AppError {
     super(message, 'WATCH_ERROR', 502, details);
   }
 }
+
+/** Error from Webmail (IMAP) operations */
+export class WebmailServiceError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'WEBMAIL_SERVICE_ERROR', 502, details);
+  }
+}

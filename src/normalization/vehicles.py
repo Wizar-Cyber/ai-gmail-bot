@@ -14,19 +14,21 @@ def extract_vehicle_and_plate(text: str) -> tuple[str, str]:
     """
     Extrae nombre del vehículo y placa del texto.
     Ej: "Appareil:MERCEDES E200 - JSZ167" -> ("MERCEDES E200", "JSZ167")
+    "Appareil:TOYOTA PRADO TXL" -> ("TOYOTA PRADO TXL", "")
     """
     patterns = [
-        r"Appareil:\s*([A-ZÀÈÌÒÙÁÉÍÓÚÑ\s]+)\s*[-–]\s*([A-Z0-9]+)",
-        r"Vehículo:\s*([A-ZÀÈÌÒÙÁÉÍÓÚÑ\s]+)\s*[-–]\s*([A-Z0-9]+)",
-        r"([A-Z]+[\sA-Z0-9]+)\s*[-–]\s*([A-Z0-9]+)",
+        (r"Appareil:\s*([A-ZÀÈÌÒÙÁÉÍÓÚÑ][A-ZÀÈÌÒÙÁÉÍÓÚÑ0-9 ]+?)\s*[-–]\s*([A-Z0-9]+)", 2),
+        (r"Vehículo:\s*([A-ZÀÈÌÒÙÁÉÍÓÚÑ][A-ZÀÈÌÒÙÁÉÍÓÚÑ0-9 ]+?)\s*[-–]\s*([A-Z0-9]+)", 2),
+        (r"([A-Z][A-Z0-9 ]+?)\s*[-–]\s*([A-Z0-9]+)", 2),
+        (r"(?:Appareil|Vehículo):\s*([A-ZÀÈÌÒÙÁÉÍÓÚÑ][A-ZÀÈÌÒÙÁÉÍÓÚÑ0-9 ]+)", 1),
     ]
 
-    for pattern in patterns:
+    for pattern, groups in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            name = match.group(1).strip()
-            plate = match.group(2).strip()
-            return normalize_vehicle_name(name), plate
+            name = normalize_vehicle_name(match.group(1).strip())
+            plate = match.group(2).strip() if groups >= 2 else ""
+            return name, plate
 
     return "", ""
 
